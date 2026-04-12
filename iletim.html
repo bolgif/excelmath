@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Isıl Analiz Pro - Full Entegre</title>
+    <style>
+        :root {
+            --excel-green: #217346;
+            --excel-border: #d1d1d1;
+            --excel-header-bg: #f8f9fa;
+            --cell-height: 28px;
+            --header-width: 50px;
+        }
+
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; font-size: 13px; overflow: hidden; display: flex; flex-direction: column; }
+        
+        /* Excel Arayüzü */
+        .ribbon { background: var(--excel-green); color: white; padding: 8px 15px; font-size: 12px; flex-shrink: 0; border-bottom: 2px solid #1a5a37; }
+        .formula-bar { background: white; border-bottom: 1px solid var(--excel-border); display: flex; align-items: center; height: 35px; padding: 0 10px; flex-shrink: 0; }
+        .fx { color: var(--excel-green); font-weight: bold; font-style: italic; margin-right: 10px; border-right: 1px solid #ccc; padding-right: 10px; }
+        #formula-display { border: none; outline: none; flex: 1; font-family: 'Consolas', monospace; color: #444; background: transparent; }
+
+        .spreadsheet-container { flex-grow: 1; overflow: auto; background: #e1e1e1; position: relative; }
+        table { border-collapse: collapse; table-layout: fixed; background: white; width: auto; }
+
+        th, .row-num { background: var(--excel-header-bg); border: 1px solid var(--excel-border); font-weight: normal; color: #666; text-align: center; position: sticky; top: 0; z-index: 10; height: var(--cell-height); }
+        .row-num { left: 0; width: var(--header-width); z-index: 11; position: sticky; }
+
+        td { border: 1px solid var(--excel-border); height: var(--cell-height); padding: 0; vertical-align: middle; }
+        .cell-input { width: 100%; height: 100%; border: none; padding: 0 8px; outline: none; background: transparent; font-size: 12px; box-sizing: border-box; }
+        .cell-input:focus { box-shadow: inset 0 0 0 2px var(--excel-green); background: #fffdec; }
+        .cell-input:disabled { background: #f0f0f0; cursor: not-allowed; color: #111; font-weight: bold; }
+        
+        .unit-select { width: 85px; height: 100%; border: none; border-left: 1px solid #ddd; background: #f9f9f9; font-size: 10px; cursor: pointer; outline: none; }
+        
+        .area-btn { background: #eee; border: 1px solid #ccc; cursor: pointer; height: 100%; width: 30px; font-size: 14px; }
+        .area-btn:hover { background: var(--excel-green); color: white; }
+
+        .title-cell { background: var(--excel-green) !important; color: white !important; font-weight: bold; text-align: center; }
+        .label-cell { background: #f2f2f2; font-weight: bold; padding-left: 10px; white-space: nowrap; }
+        .energy-cell { background: #c62828 !important; color: white !important; font-weight: bold; text-align: center; }
+        
+        /* Akordiyon Analiz Paneli */
+        .audit-panel { background: #f8f9fa; border-top: 2px solid var(--excel-green); flex-shrink: 0; transition: all 0.3s ease; }
+        .audit-header { padding: 10px 15px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: bold; color: var(--excel-green); background: #f1f1f1; border-bottom: 1px solid #ddd; }
+        .audit-header:hover { background: #e8e8e8; }
+        .audit-header::after { content: '▼'; font-size: 10px; transition: 0.3s; }
+        .audit-panel.open .audit-header::after { transform: rotate(180deg); }
+        
+        .audit-content { padding: 15px; display: none; font-family: 'Consolas', monospace; font-size: 12px; line-height: 1.6; color: #333; max-height: 200px; overflow-y: auto; }
+        .audit-panel.open .audit-content { display: block; }
+        .formula-step { color: #c62828; font-weight: bold; background: #ffeeee; padding: 2px 4px; border-radius: 3px; }
+
+        .footer-tabs { height: 32px; background: #f3f3f3; border-top: 1px solid var(--excel-border); display: flex; align-items: center; padding: 0 10px; flex-shrink: 0; }
+        .tab-active { background: white; padding: 6px 25px; border: 1px solid var(--excel-border); border-top: 3px solid var(--excel-green); color: var(--excel-green); font-weight: bold; }
+
+        /* Modal */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        .modal-content { background: white; margin: 10% auto; padding: 20px; border-radius: 8px; width: 300px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        .modal-btn { background: var(--excel-green); color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="areaModal" class="modal">
+    <div class="modal-content">
+        <h3>📐 Alan Hesaplayıcı</h3>
+        <select id="shape-type" style="width:100%; margin-bottom:10px;" onchange="toggleShape()">
+            <option value="rect">Dikdörtgen (w*h)</option>
+            <option value="circle">Daire (πr²)</option>
+        </select>
+        <div id="rect-inputs">
+            <input type="number" id="area-w" placeholder="Genişlik" style="width:100%; margin-bottom:5px; padding:5px;">
+            <input type="number" id="area-h" placeholder="Yükseklik" style="width:100%; padding:5px;">
+        </div>
+        <div id="circle-inputs" style="display:none;">
+            <input type="number" id="area-r" placeholder="Yarıçap" style="width:100%; padding:5px;">
+        </div>
+        <div style="margin-top:15px; text-align:right;">
+            <button class="modal-btn" onclick="applyArea()">Aktar</button>
+            <button onclick="closeModal()">İptal</button>
+        </div>
+    </div>
+</div>
+
+<div class="ribbon"><strong>Dosya</strong> &nbsp; Giriş &nbsp; Sayfa Düzeni &nbsp; <strong>Isıl Analiz Pro v3.0</strong></div>
+<div class="formula-bar"><span class="fx">fx</span><input type="text" id="formula-display" readonly placeholder="Formül dökümü burada görünecek..."></div>
+
+<div class="spreadsheet-container">
+    <table id="excelTable">
+        <thead id="thead"></thead>
+        <tbody id="tbody"></tbody>
+    </table>
+</div>
+
+<div id="audit-panel" class="audit-panel">
+    <div class="audit-header" onclick="toggleAudit()">
+        <span id="audit-title">📊 ANALİZ RAPORU (Veri Girişi Bekleniyor)</span>
+    </div>
+    <div id="audit-content" class="audit-content">
+        // Hesaplama detaylarını görmek için bir parametreyi boş bırakıp "HESAPLA" butonuna basın.
+    </div>
+</div>
+
+<div class="footer-tabs"><div class="tab-active">Isıl Hesaplama</div></div>
+
+<script>
+    const materialLibrary = {
+        "custom": { name: "Özel (Elle Gir)", k: "" },
+        "brick": { name: "Tuğla", k: 0.720 },
+        "concrete": { name: "Beton", k: 1.400 },
+        "steel": { name: "Çelik", k: 50.200 },
+        "air": { name: "Hava", k: 0.026 },
+        "glass_wool": { name: "Cam Yünü", k: 0.040 },
+        "wood": { name: "Ahşap", k: 0.150 }
+    };
+
+    const ROWS = 100;
+    const COLS = 26;
+    
+    // Tabloyu Oluştur
+    let theadHtml = '<tr><th class="row-num"></th>';
+    for(let i=0; i<COLS; i++) theadHtml += `<th style="width:${i===0?220:150}px">${String.fromCharCode(65 + i)}</th>`;
+    document.getElementById('thead').innerHTML = theadHtml + '</tr>';
+
+    let tbodyHtml = '';
+    for(let r=1; r<=ROWS; r++) {
+        tbodyHtml += `<tr><td class="row-num">${r}</td>`;
+        for(let c=0; c<COLS; c++) tbodyHtml += `<td id="c-${r}-${c}"></td>`;
+        tbodyHtml += '</tr>';
+    }
+    document.getElementById('tbody').innerHTML = tbodyHtml;
+
+    const setCell = (r, c, html, cls="") => {
+        const el = document.getElementById(`c-${r}-${c}`);
+        if(el) { el.innerHTML = html; if(cls) el.className = cls; }
+        return el;
+    };
+
+    // UI Yerleşimi
+    setCell(1, 0, "PARAMETRE / KÜTÜPHANE", "title-cell");
+    setCell(1, 1, "DEĞER GİRİŞİ", "title-cell");
+    setCell(1, 2, "BİRİM / SEÇENEK", "title-cell");
+
+    setCell(2, 0, "Malzeme Seçimi:", "label-cell");
+    let libSelect = `<select id="lib-select" class="cell-input" onchange="updateMaterial()">`;
+    for(let key in materialLibrary) libSelect += `<option value="${key}">${materialLibrary[key].name}</option>`;
+    libSelect += `</select>`;
+    setCell(2, 1, libSelect).colSpan = 2;
+
+    const params = [
+        {id: "Q", label: "Isı Akısı (Q)", units: [{n: "Watt", v: 1}]},
+        {id: "k", label: "İletkenlik (k)", units: [{n: "W/mK", v: 1}]},
+        {id: "A", label: "Alan (A)", units: [{n: "m²", v: 1}, {n: "cm²", v: 0.0001}]},
+        {id: "dT", label: "Sıcaklık Farkı (ΔT)", units: [{n: "K / °C", v: 1}]},
+        {id: "L", label: "Kalınlık (L)", units: [{n: "m", v: 1}, {n: "cm", v: 0.01}, {n: "mm", v: 0.001}]}
+    ];
+
+    params.forEach((p, i) => {
+        const r = i + 3;
+        setCell(r, 0, p.label, "label-cell");
+        let inputHtml = p.id === "A" ? 
+            `<div style="display:flex; height:100%;"><input type="number" id="val-${p.id}" class="cell-input"><button class="area-btn" onclick="openModal()">∑</button></div>` : 
+            `<input type="number" id="val-${p.id}" class="cell-input">`;
+        setCell(r, 1, inputHtml);
+        setCell(r, 2, `<select id="unit-${p.id}" class="unit-select">${p.units.map(u => `<option value="${u.v}">${u.n}</option>`).join('')}</select>`);
+    });
+
+    setCell(8, 0, "ENERJİ KAYBI ANALİZİ", "energy-cell").colSpan = 3;
+    setCell(9, 0, "Kayıp Süresi (t):", "label-cell");
+    setCell(9, 1, `<input type="number" id="loss-time" class="cell-input" value="1">`);
+    setCell(9, 2, `<select id="loss-time-unit" class="unit-select"><option value="3600">Saat</option><option value="60">Dakika</option><option value="86400">Gün</option></select>`);
+    setCell(10, 0, `<button onclick="solve()" style="width:100%; height:100%; background:var(--excel-green); color:white; border:none; cursor:pointer; font-weight:bold;">HESAPLA VE RAPORLA</button>`).colSpan = 3;
+    setCell(11, 0, "Toplam Enerji Kaybı:", "label-cell");
+    setCell(11, 1, "0.0000", "label-cell").id = "res-kwh";
+    setCell(11, 2, "kWh");
+
+    // Fonksiyonlar
+    window.openModal = () => document.getElementById('areaModal').style.display = 'block';
+    window.closeModal = () => document.getElementById('areaModal').style.display = 'none';
+    window.toggleShape = () => {
+        const type = document.getElementById('shape-type').value;
+        document.getElementById('rect-inputs').style.display = type === 'rect' ? 'block' : 'none';
+        document.getElementById('circle-inputs').style.display = type === 'circle' ? 'block' : 'none';
+    };
+    window.applyArea = () => {
+        const type = document.getElementById('shape-type').value;
+        let area = type === 'rect' ? (document.getElementById('area-w').value * document.getElementById('area-h').value) : (Math.PI * Math.pow(document.getElementById('area-r').value, 2));
+        document.getElementById('val-A').value = area.toFixed(4);
+        closeModal();
+    };
+    window.updateMaterial = () => {
+        const m = materialLibrary[document.getElementById('lib-select').value];
+        const kIn = document.getElementById('val-k');
+        kIn.value = m.k; kIn.disabled = (document.getElementById('lib-select').value !== "custom");
+    };
+    window.toggleAudit = () => document.getElementById('audit-panel').classList.toggle('open');
+
+    // Hesaplama Motoru
+    window.solve = () => {
+        const data = {};
+        const units = {};
+        params.forEach(p => {
+            const val = document.getElementById(`val-${p.id}`).value;
+            const unit = parseFloat(document.getElementById(`unit-${p.id}`).value);
+            data[p.id] = val === "" ? null : parseFloat(val) * unit;
+            units[p.id] = unit;
+        });
+
+        const target = Object.keys(data).find(k => data[k] === null);
+        if(!target) { alert("Lütfen bir kutuyu boş bırakın."); return; }
+
+        let Q_si = 0, formula = "", steps = "";
+        if(target === "Q") { Q_si = (data.k * data.A * data.dT) / data.L; formula = "Q = (k * A * ΔT) / L"; steps = `(${data.k} * ${data.A} * ${data.dT}) / ${data.L}`; }
+        else if(target === "L") { data.L = (data.k * data.A * data.dT) / data.Q; Q_si = data.Q; formula = "L = (k * A * ΔT) / Q"; steps = `(${data.k} * ${data.A} * ${data.dT}) / ${data.Q}`; }
+        else if(target === "k") { data.k = (data.Q * data.L) / (data.A * data.dT); Q_si = data.Q; formula = "k = (Q * L) / (A * ΔT)"; steps = `(${data.Q} * ${data.L}) / (${data.A} * ${data.dT})`; }
+        else if(target === "A") { data.A = (data.Q * data.L) / (data.k * data.dT); Q_si = data.Q; formula = "A = (Q * L) / (k * ΔT)"; steps = `(${data.Q} * ${data.L}) / (${data.k} * ${data.dT})`; }
+        else if(target === "dT") { data.dT = (data.Q * data.L) / (data.k * data.A); Q_si = data.Q; formula = "ΔT = (Q * L) / (k * A)"; steps = `(${data.Q} * ${data.L}) / (${data.k} * ${data.A})`; }
+
+        const res = (target === "Q" ? Q_si : data[target]) / units[target];
+        document.getElementById(`val-${target}`).value = res.toFixed(6);
+
+        const t = parseFloat(document.getElementById('loss-time').value) * parseFloat(document.getElementById('loss-time-unit').value);
+        const kwh = (Q_si * t) / 3600000;
+        document.getElementById('res-kwh').innerText = kwh.toFixed(6);
+
+        // Raporu Yaz ve Kapalı Tut
+        document.getElementById('audit-title').innerText = "✅ HESAPLAMA TAMAMLANDI (Detaylar İçin Tıklayın)";
+        document.getElementById('audit-content').innerHTML = `
+            <div><strong>Seçilen Formül:</strong> <span class="formula-step">${formula}</span></div>
+            <div><strong>Veri Yerleşimi:</strong> <code>${steps}</code></div>
+            <div><strong>Bulunan Sonuç:</strong> <strong>${res.toFixed(6)}</strong></div>
+            <div style="margin-top:10px; border-top:1px dashed #ccc; pt:5px;"><strong>Enerji Kaybı:</strong> ${kwh.toFixed(6)} kWh</div>
+        `;
+        document.getElementById('audit-panel').classList.remove('open');
+        document.getElementById('formula-display').value = `=${formula}  => ${steps}`;
+    };
+</script>
+</body>
+</html>

@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zamana Bağlı Isı Analizi v24.0 - Üstlü Yazım & Oto-Geometri</title>
+    <style>
+        :root {
+            --excel-green: #217346;
+            --excel-border: #d1d1d1;
+            --excel-header-bg: #f8f9fa;
+            --cell-height: 28px;
+            --header-width: 50px;
+        }
+
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; font-size: 13px; overflow: hidden; display: flex; flex-direction: column; }
+        .ribbon { background: var(--excel-green); color: white; padding: 8px 15px; font-size: 12px; flex-shrink: 0; border-bottom: 2px solid #1a5a37; }
+        .formula-bar { background: white; border-bottom: 1px solid var(--excel-border); display: flex; align-items: center; height: 35px; padding: 0 10px; flex-shrink: 0; }
+        .fx { color: var(--excel-green); font-weight: bold; font-style: italic; margin-right: 10px; border-right: 1px solid #ccc; padding-right: 10px; }
+        #formula-display { border: none; outline: none; flex: 1; font-family: 'Consolas', monospace; color: #444; background: transparent; }
+
+        .spreadsheet-container { flex-grow: 1; overflow: auto; background: #e1e1e1; position: relative; }
+        table { border-collapse: collapse; table-layout: fixed; background: white; width: auto; }
+
+        th, .row-num { background: var(--excel-header-bg); border: 1px solid var(--excel-border); font-weight: normal; color: #666; text-align: center; position: sticky; top: 0; z-index: 10; height: var(--cell-height); }
+        .row-num { left: 0; width: var(--header-width); z-index: 11; position: sticky; }
+
+        td { border: 1px solid var(--excel-border); height: var(--cell-height); padding: 0; vertical-align: middle; }
+        .cell-input { width: 100%; height: 100%; border: none; padding: 0 8px; outline: none; background: transparent; font-size: 12px; box-sizing: border-box; }
+        .cell-input:focus { box-shadow: inset 0 0 0 2px var(--excel-green); background: #fffdec; }
+        .cell-input:disabled { background: #f0f0f0; color: #111; font-weight: bold; }
+        
+        .unit-select { width: 95px; height: 100%; border: none; border-left: 1px solid #ddd; background: #f9f9f9; font-size: 11px; cursor: pointer; outline: none; }
+        .calc-btn { width: 30px; height: 100%; border: none; background: #eee; cursor: pointer; font-weight: bold; border-left: 1px solid #ddd; }
+        .calc-btn:hover { background: var(--excel-green); color: white; }
+        .target-btn { width: 100%; height: 100%; border: none; background: #eee; cursor: pointer; font-size: 10px; color: #666; font-weight: bold; }
+        .target-btn.active { background: var(--excel-green); color: white; }
+
+        .header-blue { background: #0059b3 !important; color: white !important; font-weight: bold; text-align: center; }
+        .label-cell { background: #f2f2f2; font-weight: bold; padding-left: 10px; white-space: nowrap; }
+        
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        .modal-content { background: white; margin: 10% auto; padding: 20px; border-radius: 8px; width: 350px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+        .modal-header { font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 15px; color: var(--excel-green); }
+        .modal-footer { margin-top: 15px; text-align: right; }
+        .modal-btn { background: var(--excel-green); color: white; border: none; padding: 6px 15px; cursor: pointer; border-radius: 4px; }
+        .modal-input { width: 100%; padding: 6px; margin-bottom: 8px; border: 1px solid #ccc; box-sizing: border-box; }
+
+        .audit-panel { background: #f8f9fa; border-top: 2px solid var(--excel-green); flex-shrink: 0; }
+        .audit-header { padding: 10px 15px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: bold; color: var(--excel-green); background: #f1f1f1; border-bottom: 1px solid #ddd; }
+        .audit-content { padding: 20px; display: none; font-size: 14px; line-height: 1.6; color: #333; max-height: 300px; overflow-y: auto; }
+        .audit-panel.open .audit-content { display: block; }
+
+        sup { font-size: 0.8em; }
+    </style>
+</head>
+<body>
+
+<div id="calcModal" class="modal">
+    <div class="modal-content">
+        <div id="modal-header" class="modal-header">Geometrik Hesaplayıcı</div>
+        <div id="modal-body">
+            <select id="geo-shape" class="modal-input" onchange="updateGeoInputs()">
+                <option value="box">Dikdörtgen Prizma / Plaka</option>
+                <option value="cylinder">Silindir</option>
+                <option value="sphere">Küre</option>
+            </select>
+            <div id="geo-inputs"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="modal-btn" onclick="applyGeo()">Değerleri Aktar</button>
+            <button onclick="closeModal()">İptal</button>
+        </div>
+    </div>
+</div>
+
+<div class="ribbon"><strong>Dosya</strong> &nbsp; Analiz &nbsp; <strong>v24.0 (Üstlü Yazım Modu)</strong></div>
+<div class="formula-bar"><span class="fx">fx</span><input type="text" id="formula-display" readonly></div>
+
+<div class="spreadsheet-container">
+    <table id="excelTable">
+        <thead id="thead"></thead>
+        <tbody id="tbody"></tbody>
+    </table>
+</div>
+
+<div id="audit-panel" class="audit-panel">
+    <div class="audit-header" onclick="toggleAudit()">
+        <span id="audit-title">📊 ANALİZ VE HESAPLAMA DÖKÜMÜ</span>
+    </div>
+    <div id="audit-content" class="audit-content">Değerleri giriniz; "e" yerine 10<sup>x</sup> formatı kullanılacaktır.</div>
+</div>
+
+<script>
+    // Üstlü Yazım Fonksiyonu
+    function formatExp(num) {
+        if (num === 0) return "0";
+        const abs = Math.abs(num);
+        if (abs >= 0.01 && abs < 10000) return num.toFixed(4);
+        const exp = Math.floor(Math.log10(abs));
+        const base = num / Math.pow(10, exp);
+        return `${base.toFixed(3)}·10<sup>${exp}</sup>`;
+    }
+
+    const THERMO_DATA = {
+        air: [ { t: 250, rho: 1.4128, cp: 1003 }, { t: 300, rho: 1.1614, cp: 1007 }, { t: 350, rho: 0.9950, cp: 1009 }, { t: 400, rho: 0.8711, cp: 1014 }, { t: 500, rho: 0.6964, cp: 1030 } ],
+        water: [ { t: 273, rho: 0.9998, cp: 4217 }, { t: 300, rho: 0.9965, cp: 4178 }, { t: 325, rho: 0.9871, cp: 4182 }, { t: 350, rho: 0.9737, cp: 4191 }, { t: 373, rho: 0.9584, cp: 4217 } ]
+    };
+
+    const ROWS = 50; const COLS = 15;
+    let targetId = "Tt";
+
+    let headHtml = '<tr><th class="row-num"></th>';
+    for(let i=0; i<COLS; i++) headHtml += `<th style="width:${i===1?220:i===0?250:110}px">${String.fromCharCode(65+i)}</th>`;
+    document.getElementById('thead').innerHTML = headHtml + '</tr>';
+
+    let bodyHtml = '';
+    for(let r=1; r<=ROWS; r++) {
+        bodyHtml += `<tr><td class="row-num">${r}</td>`;
+        for(let c=0; c<COLS; c++) bodyHtml += `<td id="c-${r}-${c}"></td>`;
+        bodyHtml += '</tr>';
+    }
+    document.getElementById('tbody').innerHTML = bodyHtml;
+
+    const setCell = (r, c, html, cls="") => {
+        const el = document.getElementById(`c-${r}-${c}`);
+        if(el) { el.innerHTML = html; if(cls) el.className = cls; }
+        return el;
+    };
+
+    setCell(1, 0, "1. GİRİŞ PARAMETRELERİ", "header-blue");
+    setCell(2, 0, "Akışkan Tipi:", "label-cell");
+    setCell(2, 1, `<select id="fluid-type" class="unit-select" style="width:100%" onchange="calculate()"><option value="air">Hava (Air)</option><option value="water">Su (Water)</option></select>`).colSpan = 2;
+
+    const params = [
+        {id: "Ti", label: "İlk Sıcaklık (Ti)", u:[{n:"°C",v:"c"},{n:"K",v:"k"}]},
+        {id: "Tinf", label: "Ortam Sıcaklığı (T∞)", u:[{n:"°C",v:"c"},{n:"K",v:"k"}]},
+        {id: "h", label: "Taşınım Katsayısı (h)", u:[{n:"W/m²K",v:1}]},
+        {id: "As", label: "Yüzey Alanı (As)", u:[{n:"m²",v:1},{n:"cm²",v:1e-4}], calc:true},
+        {id: "V", label: "Malzeme Hacmi (V)", u:[{n:"m³",v:1},{n:"Litre",v:1e-3}], calc:true},
+        {id: "t", label: "Geçen Süre (t)", u:[{n:"Saniye",v:1},{n:"Dakika",v:60}]},
+        {id: "Tt", label: "Final Sıcaklığı (T_t)", u:[{n:"°C",v:"c"},{n:"K",v:"k"}]}
+    ];
+
+    params.forEach((p, i) => {
+        const r = i + 3;
+        setCell(r, 0, p.label, "label-cell");
+        let inputHtml = `<div style="display:flex;height:100%"><input type="number" id="in-${p.id}" class="cell-input" oninput="calculate()">`;
+        if(p.calc) inputHtml += `<button class="calc-btn" onclick="openModal('${p.id}')">∑</button>`;
+        inputHtml += `</div>`;
+        setCell(r, 1, inputHtml);
+        setCell(r, 2, `<select id="u-${p.id}" class="unit-select" onchange="calculate()">${p.u.map(x=>`<option value="${x.v}">${x.n}</option>`).join('')}</select>`);
+        setCell(r, 3, `<button id="btn-${p.id}" class="target-btn" onclick="setTarget('${p.id}')">HEDEF</button>`);
+    });
+
+    setTarget('Tt');
+    window.toggleAudit = () => document.getElementById('audit-panel').classList.toggle('open');
+
+    // Geometri Modalları
+    window.openModal = (type) => { document.getElementById('calcModal').style.display = 'block'; updateGeoInputs(); };
+    window.closeModal = () => document.getElementById('calcModal').style.display = 'none';
+    window.updateGeoInputs = () => {
+        const shape = document.getElementById('geo-shape').value;
+        const container = document.getElementById('geo-inputs');
+        let html = shape === "box" ? `<input type="number" id="g-w" class="modal-input" placeholder="Genişlik (m)"><input type="number" id="g-h" class="modal-input" placeholder="Yükseklik (m)"><input type="number" id="g-d" class="modal-input" placeholder="Derinlik (m)">` : (shape === "cylinder" ? `<input type="number" id="g-r" class="modal-input" placeholder="Yarıçap (m)"><input type="number" id="g-l" class="modal-input" placeholder="Uzunluk (m)">` : `<input type="number" id="g-r" class="modal-input" placeholder="Yarıçap (m)">`);
+        container.innerHTML = html;
+    };
+
+    window.applyGeo = () => {
+        const shape = document.getElementById('geo-shape').value;
+        let area = 0, vol = 0;
+        if(shape === "box") { 
+            const w = parseFloat(document.getElementById('g-w').value), h = parseFloat(document.getElementById('g-h').value), d = parseFloat(document.getElementById('g-d').value);
+            area = 2*(w*h + w*d + h*d); vol = w*h*d;
+        } else if(shape === "cylinder") {
+            const r = parseFloat(document.getElementById('g-r').value), l = parseFloat(document.getElementById('g-l').value);
+            area = 2*Math.PI*r*(r+l); vol = Math.PI*r*r*l;
+        } else {
+            const r = parseFloat(document.getElementById('g-r').value);
+            area = 4*Math.PI*r*r; vol = (4/3)*Math.PI*Math.pow(r, 3);
+        }
+        document.getElementById('in-As').value = area.toFixed(6); document.getElementById('in-V').value = vol.toFixed(6);
+        document.getElementById('u-As').value = "1"; document.getElementById('u-V').value = "1";
+        closeModal(); calculate();
+    };
+
+    function setTarget(id) {
+        targetId = id;
+        document.querySelectorAll('.target-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(`btn-${id}`).classList.add('active');
+        document.querySelectorAll('.cell-input').forEach(i => i.disabled = false);
+        document.getElementById(`in-${id}`).disabled = true; document.getElementById(`in-${id}`).value = "";
+        calculate();
+    }
+
+    function calculate() {
+        const getSI = (id) => {
+            const el = document.getElementById(`in-${id}`); const unit = document.getElementById(`u-${id}`).value;
+            if(!el || el.value === "") return null;
+            const val = parseFloat(el.value);
+            return unit === "c" ? val + 273.15 : (unit === "k" ? val : val * parseFloat(unit));
+        };
+
+        const ti = getSI("Ti"), tinf = getSI("Tinf"), h = getSI("h"), As = getSI("As"), V = getSI("V"), t = getSI("t"), tt = getSI("Tt");
+        if(ti === null || tinf === null) return;
+
+        const fluid = document.getElementById('fluid-type').value;
+        const Tf = (ti + tinf) / 2;
+        const lib = THERMO_DATA[fluid];
+        
+        // Basit Interpolasyon
+        let rho, cp;
+        if (Tf <= lib[0].t) { rho = lib[0].rho; cp = lib[0].cp; }
+        else if (Tf >= lib[lib.length-1].t) { rho = lib[lib.length-1].rho; cp = lib[lib.length-1].cp; }
+        else {
+            for(let i=0; i < lib.length-1; i++) {
+                if(Tf >= lib[i].t && Tf <= lib[i+1].t) {
+                    const ratio = (Tf - lib[i].t) / (lib[i+1].t - lib[i].t);
+                    rho = lib[i].rho + ratio*(lib[i+1].rho - lib[i].rho);
+                    cp = lib[i].cp + ratio*(lib[i+1].cp - lib[i].cp); break;
+                }
+            }
+        }
+
+        const b = (h * As) / (rho * V * cp);
+        let resSI = 0, formula = "";
+
+        if(targetId === "Tt" && h && As && V && t !== null) {
+            resSI = tinf + (ti - tinf) * Math.exp(-b * t);
+            formula = "T(t) = T∞ + (Ti - T∞)e<sup>-bt</sup>";
+        } else if(targetId === "t" && h && As && V && tt) {
+            resSI = -Math.log((tt - tinf) / (ti - tinf)) / b;
+            formula = "t = -ln((T<sub>t</sub> - T∞)/(Ti - T∞)) / b";
+        }
+
+        if(resSI !== 0) {
+            const u = document.getElementById(`u-${targetId}`).value;
+            let finalValue = (u === "c") ? resSI - 273.15 : (u === "k" ? resSI : resSI / parseFloat(u));
+            document.getElementById(`in-${targetId}`).value = finalValue.toFixed(6);
+
+            const kwh = (rho * V * cp * Math.abs(ti - (targetId === "Tt" ? resSI : tt))) / 3600000;
+
+            document.getElementById('audit-content').innerHTML = `
+                <div style="border-bottom:1px solid #ddd;padding-bottom:10px;margin-bottom:10px;">
+                    <b>Tablo Değerleri:</b> ρ = ${rho.toFixed(4)} kg/m³, C<sub>p</sub> = ${cp.toFixed(0)} J/kgK
+                </div>
+                <div><b>Zaman Sabiti (b):</b> ${formatExp(b)} s<sup>-1</sup></div>
+                <div><b>Seçilen Formül:</b> ${formula}</div>
+                <div style="color:red;font-weight:bold;margin-top:10px;">Kayıp: ${kwh.toFixed(6)} kWh</div>
+            `;
+            document.getElementById('formula-display').value = `=${formula.replace(/<sup>|<\/sup>|<sub>|<\/sub>/g, "")}  => ${finalValue.toFixed(4)}`;
+        }
+    }
+</script>
+</body>
+</html>

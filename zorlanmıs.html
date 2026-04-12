@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zorlanmış Taşınım Pro - Teknik Analiz</title>
+    <style>
+        :root {
+            --excel-green: #217346;
+            --excel-border: #d1d1d1;
+            --excel-header-bg: #f8f9fa;
+            --cell-height: 28px;
+            --header-width: 50px;
+        }
+
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; font-size: 13px; overflow: hidden; display: flex; flex-direction: column; }
+        
+        .ribbon { background: var(--excel-green); color: white; padding: 8px 15px; font-size: 12px; flex-shrink: 0; border-bottom: 2px solid #1a5a37; }
+        .formula-bar { background: white; border-bottom: 1px solid var(--excel-border); display: flex; align-items: center; height: 35px; padding: 0 10px; flex-shrink: 0; }
+        .fx { color: var(--excel-green); font-weight: bold; font-style: italic; margin-right: 10px; border-right: 1px solid #ccc; padding-right: 10px; }
+        #formula-display { border: none; outline: none; flex: 1; font-family: 'Consolas', monospace; color: #444; background: transparent; }
+
+        .spreadsheet-container { flex-grow: 1; overflow: auto; background: #e1e1e1; position: relative; }
+        table { border-collapse: collapse; table-layout: fixed; background: white; width: auto; }
+
+        th, .row-num { background: var(--excel-header-bg); border: 1px solid var(--excel-border); font-weight: normal; color: #666; text-align: center; position: sticky; top: 0; z-index: 10; height: var(--cell-height); }
+        .row-num { left: 0; width: var(--header-width); z-index: 11; position: sticky; }
+
+        td { border: 1px solid var(--excel-border); height: var(--cell-height); padding: 0; vertical-align: middle; }
+        .cell-input { width: 100%; height: 100%; border: none; padding: 0 8px; outline: none; background: transparent; font-size: 12px; box-sizing: border-box; }
+        .cell-input:focus { box-shadow: inset 0 0 0 2px var(--excel-green); background: #fffdec; }
+        .cell-input:disabled { background: #f0f0f0; color: #111; font-weight: bold; }
+        
+        .unit-select { width: 95px; height: 100%; border: none; border-left: 1px solid #ddd; background: #f9f9f9; font-size: 11px; cursor: pointer; outline: none; }
+        
+        .header-blue { background: #0059b3 !important; color: white !important; font-weight: bold; text-align: center; }
+        .header-orange { background: #e67e22 !important; color: white !important; font-weight: bold; text-align: center; }
+        .label-cell { background: #f2f2f2; font-weight: bold; padding-left: 10px; white-space: nowrap; }
+        
+        .audit-panel { background: #f8f9fa; border-top: 2px solid var(--excel-green); flex-shrink: 0; transition: all 0.3s; }
+        .audit-header { padding: 10px 15px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: bold; color: var(--excel-green); background: #f1f1f1; }
+        .audit-content { padding: 15px; display: none; font-family: 'Segoe UI', sans-serif; font-size: 13px; line-height: 1.8; color: #333; max-height: 320px; overflow-y: auto; }
+        .audit-panel.open .audit-content { display: block; }
+
+        .step-container { margin-bottom: 25px; border-left: 5px solid var(--excel-green); padding-left: 15px; }
+        .step-title { font-weight: bold; color: #2c3e50; margin-bottom: 5px; text-decoration: underline; font-size: 13px; }
+        .formula-line { font-family: 'Consolas', monospace; color: #c62828; font-size: 15px; margin-bottom: 3px; }
+        .sub-line { font-family: 'Consolas', monospace; color: #555; font-size: 14px; margin-bottom: 3px; }
+        .res-line { font-weight: bold; color: #217346; font-size: 15px; }
+        sup { font-size: 0.8em; }
+    </style>
+</head>
+<body>
+
+<div class="ribbon"><strong>Dosya</strong> &nbsp; Raporla &nbsp; <strong>Zorlanmış Taşınım Analiz Sistemi</strong></div>
+<div class="formula-bar"><span class="fx">fx</span><input type="text" id="formula-display" readonly></div>
+
+<div class="spreadsheet-container">
+    <table id="excelTable">
+        <thead id="thead"></thead>
+        <tbody id="tbody"></tbody>
+    </table>
+</div>
+
+<div id="audit-panel" class="audit-panel">
+    <div class="audit-header" onclick="toggleAudit()">
+        <span id="audit-title">📝 HESAPLAMA ADIMLARI VE DETAYLI GÖSTERİM</span>
+    </div>
+    <div id="audit-content" class="audit-content">Değerleri giriniz; zorlanmış taşınım dökümü burada belirecektir.</div>
+</div>
+
+<script>
+    // --- AKILLI TABLO KÜTÜPHANESİ ---
+    const THERMO_DATA = {
+        air: [
+            { t: 250, nu: 1.144e-5, k: 0.02227, pr: 0.722 },
+            { t: 300, nu: 1.568e-5, k: 0.02624, pr: 0.707 },
+            { t: 350, nu: 2.076e-5, k: 0.03003, pr: 0.697 },
+            { t: 400, nu: 2.641e-5, k: 0.03365, pr: 0.689 },
+            { t: 450, nu: 3.239e-5, k: 0.03707, pr: 0.683 },
+            { t: 500, nu: 3.879e-5, k: 0.04038, pr: 0.680 }
+        ],
+        water: [
+            { t: 273, nu: 1.787e-6, k: 0.561, pr: 13.6, beta: 0.0000 },
+            { t: 300, nu: 0.857e-6, k: 0.613, pr: 5.83, beta: 0.000276 },
+            { t: 325, nu: 0.517e-6, k: 0.645, pr: 3.39, beta: 0.000462 },
+            { t: 350, nu: 0.365e-6, k: 0.668, pr: 2.29, beta: 0.000624 },
+            { t: 373, nu: 0.294e-6, k: 0.681, pr: 1.76, beta: 0.000752 }
+        ]
+    };
+
+    function formatMath(num) {
+        if (num === 0) return "0";
+        const abs = Math.abs(num);
+        if (abs >= 0.01 && abs < 10000) return num.toFixed(4);
+        const exp = Math.floor(Math.log10(abs));
+        const base = num / Math.pow(10, exp);
+        return `${base.toFixed(3)}·10<sup>${exp}</sup>`;
+    }
+
+    const ROWS = 100;
+    const COLS = 26;
+    let head = '<tr><th class="row-num"></th>';
+    for(let i=0; i<COLS; i++) head += `<th style="width:${i===0?280:200}px">${String.fromCharCode(65+i)}</th>`;
+    document.getElementById('thead').innerHTML = head + '</tr>';
+
+    let body = '';
+    for(let r=1; r<=ROWS; r++) {
+        body += `<tr><td class="row-num">${r}</td>`;
+        for(let c=0; c<COLS; c++) body += `<td id="c-${r}-${c}"></td>`;
+        body += '</tr>';
+    }
+    document.getElementById('tbody').innerHTML = body;
+
+    const setCell = (r, c, html, cls="") => {
+        const el = document.getElementById(`c-${r}-${c}`);
+        if(el) { el.innerHTML = html; if(cls) el.className = cls; }
+        return el;
+    };
+
+    setCell(1, 0, "1. GİRİŞ VE AKIŞKAN SEÇİMİ", "header-blue");
+    setCell(2, 0, "Akışkan Tipi:", "label-cell");
+    setCell(2, 1, `<select id="fluid-type" class="unit-select" style="width:100%" onchange="solveAuto()"><option value="air">Hava (Air)</option><option value="water">Su (Water)</option></select>`).colSpan = 2;
+
+    const inputs = [
+        {id: "ts", label: "Yüzey Sıcaklığı (Ts)", units: [{n:"°C", v:"c"}, {n:"K", v:"k"}]},
+        {id: "tinf", label: "Ortam Sıcaklığı (T∞)", units: [{n:"°C", v:"c"}, {n:"K", v:"k"}]},
+        {id: "lc", label: "Karakteristik Uzunluk (Lc)", units: [{n:"m", v:1}, {n:"cm", v:0.01}, {n:"mm", v:0.001}]},
+        {id: "vel", label: "Akışkan Hızı (V)", units: [{n:"m/s", v:1}, {n:"km/h", v:0.2778}]}
+    ];
+    inputs.forEach((p, i) => {
+        const r = i + 3;
+        setCell(r, 0, p.label, "label-cell");
+        setCell(r, 1, `<input type="number" id="in-${p.id}" class="cell-input" oninput="solveAuto()">`);
+        setCell(r, 2, `<select id="unit-${p.id}" class="unit-select" onchange="solveAuto()">${p.units.map(u=>`<option value="${u.v}">${u.n}</option>`).join('')}</select>`);
+    });
+
+    setCell(7, 0, "2. TABLO VERİLERİ (OTOMATİK)", "header-orange");
+    const tabLabels = ["Tf [K]", "ν [m²/s]", "Pr", "k [W/mK]"];
+    ["tf", "nu", "pr", "k"].forEach((id, i) => {
+        const r = i + 8;
+        setCell(r, 0, tabLabels[i], "label-cell");
+        setCell(r, 1, `<div id="tab-${id}" class="cell-input" style="line-height:28px"></div>`).colSpan = 2;
+    });
+
+    setCell(12, 0, "3. ZORLANMIŞ TAŞINIM SONUÇLARI", "title-cell");
+    const resLabels = ["Reynolds (Re)", "Nusselt (Nu)", "h [W/m²K]"];
+    ["re", "nu_num", "h"].forEach((id, i) => {
+        const r = i + 13;
+        setCell(r, 0, resLabels[i], "label-cell");
+        setCell(r, 1, `<div id="res-${id}" class="cell-input" style="line-height:28px; font-weight:bold;"></div>`).colSpan = 2;
+    });
+
+    function toK(val, unit) { return unit === "c" ? val + 273.15 : val; }
+
+    function interpolate(x, data, prop) {
+        if (x <= data[0].t) return data[0][prop];
+        if (x >= data[data.length-1].t) return data[data.length-1][prop];
+        for(let i=0; i < data.length - 1; i++) {
+            if(x >= data[i].t && x <= data[i+1].t) {
+                const x0 = data[i].t, x1 = data[i+1].t;
+                const y0 = data[i][prop], y1 = data[i+1][prop];
+                return y0 + (x - x0) * (y1 - y0) / (x1 - x0);
+            }
+        }
+    }
+
+    window.toggleAudit = () => document.getElementById('audit-panel').classList.toggle('open');
+
+    window.solveAuto = () => {
+        const tsVal = parseFloat(document.getElementById('in-ts').value);
+        const tinfVal = parseFloat(document.getElementById('in-tinf').value);
+        const velVal = parseFloat(document.getElementById('in-vel').value);
+        const tsK = toK(tsVal, document.getElementById('unit-ts').value);
+        const tinfK = toK(tinfVal, document.getElementById('unit-tinf').value);
+        const lcSI = parseFloat(document.getElementById('in-lc').value) * parseFloat(document.getElementById('unit-lc').value);
+        const velSI = velVal * parseFloat(document.getElementById('unit-vel').value);
+        const fluid = document.getElementById('fluid-type').value;
+
+        if(isNaN(tsK) || isNaN(tinfK) || isNaN(lcSI) || isNaN(velSI)) return;
+
+        const Tf = (tsK + tinfK) / 2;
+        const data = THERMO_DATA[fluid];
+        const nu = interpolate(Tf, data, 'nu');
+        const pr = interpolate(Tf, data, 'pr');
+        const k_val = interpolate(Tf, data, 'k');
+
+        document.getElementById('tab-tf').innerHTML = Tf.toFixed(2);
+        document.getElementById('tab-nu').innerHTML = formatMath(nu);
+        document.getElementById('tab-pr').innerHTML = pr.toFixed(3);
+        document.getElementById('tab-k').innerHTML = k_val.toFixed(4);
+
+        // Zorlanmış Taşınım Hesapları
+        const re = (velSI * lcSI) / nu;
+        let nu_num, rej;
+
+        if(re < 5e5) {
+            rej = "Laminer";
+            nu_num = 0.664 * Math.pow(re, 0.5) * Math.pow(pr, 1/3);
+        } else {
+            rej = "Türbülanslı";
+            nu_num = 0.037 * Math.pow(re, 0.8) * Math.pow(pr, 1/3);
+        }
+
+        const h_final = (nu_num * k_val) / lcSI;
+
+        document.getElementById('res-re').innerHTML = formatMath(re);
+        document.getElementById('res-nu_num').innerHTML = nu_num.toFixed(4);
+        document.getElementById('res-h').innerHTML = h_final.toFixed(4);
+
+        // --- DETAYLI ANALİZ RAPORU ---
+        document.getElementById('audit-title').innerText = `✅ ZORLANMIŞ TAŞINIM: ${rej.toUpperCase()} AKIŞ`;
+        document.getElementById('audit-content').innerHTML = `
+            <div class="step-container">
+                <div class="step-title">1. Film Sıcaklığı (Tf)</div>
+                <div class="formula-line">Tf = (Ts + T∞) / 2</div>
+                <div class="sub-line">Tf = (${tsK.toFixed(1)} + ${tinfK.toFixed(1)}) / 2 = <strong>${Tf.toFixed(2)} K</strong></div>
+            </div>
+
+            <div class="step-container">
+                <div class="step-title">2. Reynolds Sayısı (Re)</div>
+                <div class="formula-line">Re = (V · Lc) / ν</div>
+                <div class="sub-line">Re = (${velSI.toFixed(2)} · ${lcSI.toFixed(3)}) / ${formatMath(nu)} = <strong>${formatMath(re)}</strong></div>
+                <div style="font-size:11px; color:#666;">* Re ${re < 5e5 ? '<' : '>'} 5·10⁵ olduğu için akış <strong>${rej}</strong> rejimdedir.</div>
+            </div>
+
+            <div class="step-container">
+                <div class="step-title">3. Nusselt Sayısı (Nu) - ${rej}</div>
+                <div class="formula-line">${re < 5e5 ? "Nu = 0.664 · Re⁰⁵ · Pr¹/³" : "Nu = 0.037 · Re⁰⁸ · Pr¹/³"}</div>
+                <div class="sub-line">Nu = ${re < 5e5 ? "0.664" : "0.037"} · (${formatMath(re)})<sup>${re < 5e5 ? "0.5" : "0.8"}</sup> · ${pr.toFixed(3)}<sup>1/3</sup> = <strong>${nu_num.toFixed(4)}</strong></div>
+            </div>
+
+            <div class="step-container">
+                <div class="step-title">4. Taşınım Katsayısı (h)</div>
+                <div class="formula-line">h = (Nu · k) / Lc</div>
+                <div class="sub-line">h = (${nu_num.toFixed(4)} · ${k_val.toFixed(4)}) / ${lcSI.toFixed(3)} = <strong>${h_final.toFixed(4)} W/m²K</strong></div>
+            </div>
+        `;
+        document.getElementById('formula-display').value = `h = (Nu * k) / Lc = ${h_final.toFixed(4)} W/m²K`;
+    };
+</script>
+</body>
+</html>

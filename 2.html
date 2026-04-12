@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eşanjör Tasarım Paneli v28.0</title>
+    <style>
+        :root {
+            --excel-green: #217346;
+            --excel-border: #d1d1d1;
+            --excel-header-bg: #f8f9fa;
+            --cell-height: 20px;
+            --col-header-height: 22px;
+            --row-num-width: 40px;
+            --grid-line: #e2e2e2;
+        }
+
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; font-size: 11px; overflow: hidden; display: flex; flex-direction: column; background: #e1e1e1; }
+        
+        .ribbon { background: var(--excel-green); color: white; padding: 6px 12px; font-size: 11px; flex-shrink: 0; font-weight: bold; border-bottom: 1px solid #1a5a37; }
+        .formula-bar { background: white; border-bottom: 1px solid var(--excel-border); display: flex; align-items: center; height: 28px; padding: 0 5px; flex-shrink: 0; }
+        .fx { color: var(--excel-green); font-weight: bold; font-style: italic; margin-right: 8px; border-right: 1px solid #ccc; padding-right: 8px; font-size: 13px; }
+        #formula-display { border: none; outline: none; flex: 1; font-family: 'Consolas', monospace; color: #444; background: transparent; font-size: 11px; }
+
+        .spreadsheet-viewport { flex-grow: 1; overflow: auto; position: relative; background: #fff; }
+        table { border-collapse: collapse; table-layout: fixed; background: white; border-spacing: 0; }
+        th { background: var(--excel-header-bg); border: 1px solid var(--excel-border); font-weight: normal; color: #666; height: var(--col-header-height); position: sticky; top: 0; z-index: 10; width: 100px; }
+        .row-num { background: var(--excel-header-bg); border: 1px solid var(--excel-border); text-align: center; color: #666; width: var(--row-num-width); position: sticky; left: 0; z-index: 9; }
+        th:first-child { z-index: 11; left: 0; }
+
+        td { border: 1px solid var(--grid-line); height: var(--cell-height); padding: 0; vertical-align: middle; overflow: hidden; }
+        .cell-input { width: 100%; height: 100%; border: none; padding: 0 4px; outline: none; background: transparent; font-size: 11px; box-sizing: border-box; }
+        .cell-input:focus { background: #fffdec; box-shadow: inset 0 0 0 1px var(--excel-green); }
+
+        .s-green { background: #2e7d32 !important; color: white !important; font-weight: bold; padding-left: 6px; }
+        .s-blue { background: #0059b3 !important; color: white !important; font-weight: bold; padding-left: 6px; }
+        .s-orange { background: #e65100 !important; color: white !important; font-weight: bold; padding-left: 6px; }
+        .s-purple { background: #6a1b9a !important; color: white !important; font-weight: bold; padding-left: 6px; }
+        .label-cell { background: #f2f2f2; font-weight: bold; padding-left: 6px; }
+        .res-cell { background: #fffde7 !important; font-weight: bold; text-align: center; color: #f57f17; border: 1px solid #ffe082 !important; }
+        .unit-select { width: 100%; height: 100%; border: none; background: #f4f4f4; font-size: 10px; cursor: pointer; outline: none; text-align: center; }
+        .note-text { color: #d32f2f; font-size: 9px; font-weight: normal; padding-left: 4px; font-style: italic; }
+        .info-note { color: #0277bd; font-size: 9px; font-weight: normal; padding-left: 8px; font-style: italic; }
+
+        .audit-panel { background: #f8f9fa; border-top: 2px solid var(--excel-green); flex-shrink: 0; transition: all 0.3s ease; }
+        .audit-header { padding: 8px 15px; font-weight: bold; color: var(--excel-green); background: #eee; border-bottom: 1px solid #ddd; font-size: 11px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .audit-content { padding: 0 15px; font-family: 'Consolas', monospace; font-size: 11px; line-height: 1.5; color: #333; height: 0; overflow: hidden; transition: all 0.3s ease; }
+        .audit-panel.open .audit-content { padding: 12px 15px; height: 280px; overflow-y: auto; }
+        .formula-step { color: #c62828; font-weight: bold; background: #ffeeee; padding: 2px 4px; border-radius: 3px; }
+        .audit-section { margin-bottom: 15px; border-left: 3px solid var(--excel-green); padding-left: 10px; }
+        .toggle-icon::after { content: '▲'; font-size: 8px; }
+        .audit-panel.open .toggle-icon::after { content: '▼'; }
+    </style>
+</head>
+<body>
+
+<div class="ribbon">Eşanjör_Tasarım_Dosyası_v28.xlsx - Excel</div>
+<div class="formula-bar"><span class="fx">fx</span><input type="text" id="formula-display" readonly></div>
+
+<div class="spreadsheet-viewport">
+    <table id="excelTable">
+        <thead><tr id="col-headers"><th></th></tr></thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+</div>
+
+<div id="audit-panel" class="audit-panel">
+    <div class="audit-header" onclick="toggleAudit()">
+        <span>📊 DETAYLI HESAPLAMA ANALİZ RAPORU</span>
+        <span class="toggle-icon"></span>
+    </div>
+    <div id="audit-content" class="audit-content">Analiz verileri hazırlanıyor...</div>
+</div>
+
+<script>
+    const pipeTable = {
+        "1/2": { od: 21.3, sch5: 1.65, sch10: 2.11, sch40: 2.77 },
+        "3/4": { od: 26.7, sch5: 1.65, sch10: 2.11, sch40: 2.87 },
+        "1": { od: 33.4, sch5: 1.65, sch10: 2.77, sch40: 3.38 },
+        "2": { od: 60.3, sch5: 1.65, sch10: 2.77, sch40: 3.91 }
+    };
+
+    function init() {
+        const h = document.getElementById('col-headers');
+        for(let i=0; i<26; i++) h.innerHTML += `<th>${String.fromCharCode(65+i)}</th>`;
+        const body = document.getElementById('tableBody');
+        for(let r=1; r<=200; r++) {
+            let tr = `<tr><td class="row-num">${r}</td>`;
+            for(let c=0; c<26; c++) tr += `<td id="c-${String.fromCharCode(65+c)}${r}"></td>`;
+            body.innerHTML += tr + `</tr>`;
+        }
+        renderStep9();
+        renderStep91();
+        renderStep92();
+        renderStep93();
+        calculateAll();
+    }
+
+    function toggleAudit() { document.getElementById('audit-panel').classList.toggle('open'); }
+
+    function setCell(id, html, cls='', span=1, rId=null) {
+        let td = document.getElementById(`c-${id}`);
+        if(!td) return;
+        td.innerHTML = html;
+        if(cls) td.className = cls;
+        if(rId) td.id = rId;
+        if(span > 1) {
+            td.colSpan = span;
+            let startChar = id[0].charCodeAt(0), rowNum = id.substring(1);
+            for(let i=1; i<span; i++) {
+                let target = document.getElementById(`c-${String.fromCharCode(startChar + i)}${rowNum}`);
+                if(target) target.style.display = 'none';
+            }
+        }
+    }
+
+    function renderStep9() {
+        setCell('A1', 'ADIM 9: BORU ÖZELLİKLERİ', 's-green', 2);
+        setCell('A2', 'NPS / SCH Seçimi:', 'label-cell');
+        setCell('B2', `<select id="sel-nps" class="unit-select" onchange="updatePipe()"><option value="1/2">1/2"</option><option value="3/4">3/4"</option><option value="1" selected>1"</option><option value="2">2"</option><option value="custom">Özel</option></select>`);
+        setCell('C2', `<select id="sel-sch" class="unit-select" onchange="updatePipe()"><option value="sch5">SCH 5</option><option value="sch10">SCH 10</option><option value="sch40" selected>SCH 40</option></select>`);
+        setCell('A3', 'OD / t (mm):', 'label-cell');
+        setCell('B3', `<input type="number" id="v-od" class="cell-input" readonly value="33.4" oninput="calculateAll()">`);
+        setCell('C3', `<input type="number" id="v-wall" class="cell-input" readonly value="3.38" oninput="calculateAll()">`);
+        setCell('A4', 'Boru İç Çapı (ID):', 'label-cell');
+        setCell('B4', '26.64', 'res-cell', 1, 'res-id');
+    }
+
+    function renderStep91() {
+        setCell('A6', 'ADIM 9.1: AKIŞ ANALİZİ (1 BORU)', 's-blue', 2);
+        setCell('A7', 'Akışkan / Yoğunluk (ρ):', 'label-cell');
+        setCell('B7', `<select id="sel-fluid" class="unit-select" onchange="updateFluid()"><option value="water">Su</option><option value="custom">Özel</option></select>`);
+        setCell('C7', `<input type="number" id="v-rho" class="cell-input" value="997" oninput="calculateAll()">`);
+        setCell('D7', `<span class="note-text">Su: 1000kg/m³ - 1g/cm³</span>`, '', 2);
+        setCell('A8', 'Akış Hızı (v) [m/s]:', 'label-cell');
+        setCell('B8', `<input type="number" id="v-velocity" class="cell-input" value="1.5" step="0.1" oninput="calculateAll()">`);
+        setCell('A9', 'Tek Boru Debisi (ṁ₁):', 'label-cell');
+        setCell('B9', '0.00', 'res-cell', 1, 'res-mdot-single');
+        setCell('C9', 'kg/s');
+    }
+
+    function renderStep92() {
+        setCell('A11', 'ADIM 9.2: BORU SAYISI HESABI', 's-orange', 2);
+        setCell('A12', 'Hedef Toplam Debi (ṁₜ):', 'label-cell');
+        setCell('B12', `<input type="number" id="v-mdot-total" class="cell-input" value="10.0" step="0.5" oninput="calculateAll()">`);
+        setCell('C12', 'kg/s');
+        setCell('A13', 'Boru Sayısı (N):', 'label-cell');
+        setCell('B13', '0', 'res-cell', 1, 'res-pipe-count');
+        setCell('C13', 'Adet');
+    }
+
+    function renderStep93() {
+        setCell('A15', 'ADIM 9.3: BORU UZUNLUĞU BELİRLEME', 's-purple', 2);
+        setCell('A16', 'Hedef Yüzey Alanı (A):', 'label-cell');
+        setCell('B16', `<input type="number" id="v-area-target" class="cell-input" value="5.0" step="0.5" oninput="calculateAll()">`);
+        setCell('C16', 'm²');
+        setCell('D16', '<span class="info-note">Tek geçişli için geçerlidir. 2 geçişte 2 ye bölünür.</span>', '', 4);
+        setCell('A17', 'Boru Uzunluğu (L):', 'label-cell');
+        setCell('B17', '0.00', 'res-cell', 1, 'res-length');
+        setCell('C17', 'metre');
+    }
+
+    function updatePipe() {
+        const nps = document.getElementById('sel-nps').value;
+        const sch = document.getElementById('sel-sch').value;
+        const odI = document.getElementById('v-od'), wI = document.getElementById('v-wall');
+        if (nps !== 'custom') {
+            odI.readOnly = wI.readOnly = true;
+            odI.value = pipeTable[nps].od;
+            wI.value = pipeTable[nps][sch] || pipeTable[nps].sch40;
+        } else { odI.readOnly = wI.readOnly = false; }
+        calculateAll();
+    }
+
+    function updateFluid() {
+        const fluid = document.getElementById('sel-fluid').value;
+        const rhoI = document.getElementById('v-rho');
+        if(fluid === 'water') { rhoI.value = 997; rhoI.readOnly = true; } 
+        else { rhoI.readOnly = false; }
+        calculateAll();
+    }
+
+    function calculateAll() {
+        const od = parseFloat(document.getElementById('v-od').value) || 0;
+        const t = parseFloat(document.getElementById('v-wall').value) || 0;
+        const v = parseFloat(document.getElementById('v-velocity').value) || 0;
+        const rho = parseFloat(document.getElementById('v-rho').value) || 0;
+        const mdot_t = parseFloat(document.getElementById('v-mdot-total').value) || 0;
+        const A_target = parseFloat(document.getElementById('v-area-target').value) || 0;
+
+        // ADIM 9
+        const id = od - (2 * t);
+        
+        // ADIM 9.1
+        const area_m2_internal = ((Math.PI * Math.pow(id, 2)) / 4) / 1000000;
+        const m1 = rho * area_m2_internal * v;
+        
+        // ADIM 9.2
+        const raw_n = m1 > 0 ? (mdot_t / m1) : 0;
+        const n = Math.ceil(raw_n);
+        
+        // ADIM 9.3
+        const pi = 3.14;
+        const L = (n > 0 && od > 0) ? (A_target / (pi * (od / 1000) * n)) : 0;
+
+        // UI Güncelleme
+        document.getElementById('res-id').innerText = id.toFixed(2);
+        document.getElementById('res-mdot-single').innerText = m1.toFixed(4);
+        document.getElementById('res-pipe-count').innerText = n;
+        document.getElementById('res-length').innerText = L.toFixed(2);
+        
+        document.getElementById('formula-display').value = `L = A / (π * OD * N)  =>  ${A_target} / (3.14 * ${(od/1000).toFixed(4)} * ${n}) = ${L.toFixed(2)}m`;
+
+        // TÜM HESAPLAMA ADIMLARI RAPORU
+        document.getElementById('audit-content').innerHTML = `
+            <div class="audit-section">
+                <strong>[ADIM 9] Boru Geometrisi:</strong><br>
+                İç Çap (ID) = OD - (2 * t) = ${od} - (2 * ${t}) = <span class="formula-step">${id.toFixed(2)} mm</span>
+            </div>
+
+            <div class="audit-section">
+                <strong>[ADIM 9.1] Tek Boru Kapasitesi:</strong><br>
+                Kesit Alanı (Ac) = (π * ID²) / 4 = (3.1415 * ${id.toFixed(2)}²) / 4 = <span class="formula-step">${(area_m2_internal*1000000).toFixed(2)} mm²</span><br>
+                Kütlesel Debi (ṁ₁) = ρ * Ac[m²] * v = ${rho} * ${(area_m2_internal).toFixed(7)} * ${v} = <span class="formula-step">${m1.toFixed(4)} kg/s</span>
+            </div>
+
+            <div class="audit-section">
+                <strong>[ADIM 9.2] Boru Sayısı:</strong><br>
+                Hesaplanan Adet = ṁₜ / ṁ₁ = ${mdot_t} / ${m1.toFixed(4)} = ${raw_n.toFixed(3)}<br>
+                Yuvarlama = <span class="formula-step">Math.ceil(${raw_n.toFixed(3)}) = ${n} Adet</span>
+            </div>
+
+            <div class="audit-section">
+                <strong>[ADIM 9.3] Boru Uzunluğu:</strong><br>
+                Dış Çap (m) = ${od} / 1000 = ${(od/1000).toFixed(4)} m<br>
+                L = A / (π * OD[m] * N) = ${A_target} / (3.14 * ${(od/1000).toFixed(4)} * ${n}) = <span class="formula-step">${L.toFixed(2)} Metre</span>
+            </div>
+        `;
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>

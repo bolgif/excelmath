@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Isıl Direnç Şebekesi Pro v14.0 - Formüllü Döküm</title>
+    <style>
+        :root {
+            --excel-green: #217346;
+            --excel-border: #d1d1d1;
+            --excel-header-bg: #f8f9fa;
+            --cell-height: 12px;
+            --header-width: 16px;
+            --grid-line: #e2e2e2;
+        }
+
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; font-size: 9px; overflow: hidden; display: flex; flex-direction: column; }
+        
+        .ribbon { background: var(--excel-green); color: white; padding: 2px 8px; font-size: 9px; flex-shrink: 0; border-bottom: 1px solid #1a5a37; }
+        .formula-bar { background: white; border-bottom: 1px solid var(--excel-border); display: flex; align-items: center; height: 22px; padding: 0 5px; flex-shrink: 0; }
+        .fx { color: var(--excel-green); font-weight: bold; font-style: italic; margin-right: 5px; border-right: 1px solid #ccc; padding-right: 5px; font-size: 10px; }
+        #formula-display { border: none; outline: none; flex: 1; font-family: 'Consolas', monospace; color: #444; background: transparent; font-size: 10px; }
+
+        .spreadsheet-container { flex-grow: 1; overflow: auto; background: #e1e1e1; position: relative; }
+        table { border-collapse: collapse; table-layout: fixed; background: white; width: auto; border-spacing: 0; }
+
+        th, .row-num { 
+            background: var(--excel-header-bg); 
+            border: 1px solid var(--excel-border); 
+            font-weight: normal; 
+            color: #666; 
+            text-align: center; 
+            position: sticky; 
+            top: 0; 
+            z-index: 10; 
+            height: var(--cell-height); 
+        }
+        .row-num { 
+            left: 0; 
+            width: var(--header-width); 
+            z-index: 11; 
+            position: sticky; 
+            font-size: 7.5px;
+            border-right: 1px solid #bbb;
+            padding: 0;
+            line-height: var(--cell-height);
+        }
+
+        td { border: 1px solid var(--grid-line); height: var(--cell-height); padding: 0; vertical-align: middle; min-width: 80px; }
+        .cell-input { width: 100%; height: 100%; border: none; padding: 0 2px; outline: none; background: transparent; font-size: 9px; box-sizing: border-box; line-height: var(--cell-height); }
+        .cell-input:focus { box-shadow: inset 0 0 0 1px var(--excel-green); background: #fffdec; z-index: 5; position: relative; }
+        
+        .unit-select { width: 100%; height: 100%; border: none; background: #f9f9f9; font-size: 8px; cursor: pointer; outline: none; padding: 0; }
+
+        .header-blue { background: #0059b3 !important; color: white !important; font-weight: bold; text-align: center; font-size: 8.5px; }
+        .header-orange { background: #e67e22 !important; color: white !important; font-weight: bold; text-align: center; font-size: 8.5px; }
+        .header-green { background: var(--excel-green) !important; color: white !important; font-weight: bold; text-align: center; font-size: 8.5px; }
+        .label-cell { background: #f2f2f2; font-weight: bold; padding-left: 4px; }
+        
+        .btn-add { background: #f3f3f3; border: 1px solid #bbb; padding: 0px 3px; cursor: pointer; font-size: 8px; border-radius: 1px; }
+        .del-btn { color: red; border: none; background: none; cursor: pointer; font-weight: bold; font-size: 9px; padding: 0 1px; }
+        .res-text { font-weight: bold; padding-left: 4px; font-family: 'Consolas', monospace; font-size: 9px; }
+        
+        /* ANALİZ PANELİ GÜNCELLEMESİ */
+        .audit-panel { background: #f8f9fa; border-top: 2px solid var(--excel-green); flex-shrink: 0; }
+        .audit-header { padding: 4px 10px; cursor: pointer; font-weight: bold; color: var(--excel-green); background: #f1f1f1; font-size: 9px; display: flex; justify-content: space-between; }
+        .audit-content { padding: 10px; display: none; font-size: 9px; line-height: 1.4; color: #333; max-height: 150px; overflow-y: auto; font-family: 'Consolas', monospace; }
+        .audit-panel.open .audit-content { display: block; }
+        .formula-section { margin-bottom: 8px; padding: 5px; background: #fff; border-left: 3px solid var(--excel-green); }
+        .formula-title { font-weight: bold; color: #0059b3; margin-bottom: 3px; text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+<div class="ribbon"><strong>Dosya</strong> &nbsp; Analiz &nbsp; <strong>v14.0 Isıl Direnç (Ayrıntılı Formül Dökümü)</strong></div>
+<div class="formula-bar"><span class="fx">fx</span><input type="text" id="formula-display" readonly></div>
+
+<div class="spreadsheet-container">
+    <table id="mainTable">
+        <thead id="tableHead"></thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+</div>
+
+<div id="audit-panel" class="audit-panel">
+    <div class="audit-header" onclick="toggleAudit()">
+        <span>📊 AYRINTILI ANALİZ VE FORMÜL DÖKÜMÜ</span>
+        <span>(Tıklayarak Aç/Kapat)</span>
+    </div>
+    <div id="audit-content" class="audit-content">Hesaplama yapmak için veri giriniz.</div>
+</div>
+
+<script>
+    const MAX_ROWS = 400; 
+    const MAX_COLS = 20;
+    let condLayers = [{id: 1, v1: 0.2, v2: 0.72, a: 1}];
+    let convLayers = [{id: 2, v1: 1, v2: 10, a: 1}];
+
+    function init() {
+        renderHead();
+        renderBody();
+    }
+
+    function getColName(n) {
+        let name = "", a = 65;
+        while (n >= 0) { name = String.fromCharCode(a + (n % 26)) + name; n = Math.floor(n / 26) - 1; }
+        return name;
+    }
+
+    function renderHead() {
+        let html = '<tr><th class="row-num"></th>';
+        for(let i=0; i<MAX_COLS; i++) html += `<th style="width:${i===0?130:80}px">${getColName(i)}</th>`;
+        document.getElementById('tableHead').innerHTML = html + '</tr>';
+    }
+
+    function renderBody() {
+        const body = document.getElementById('tableBody');
+        body.innerHTML = "";
+        let curr = 1;
+
+        body.innerHTML += createHeader(curr++, "1. İLETİM ŞEBEKESİ", "header-blue", ["Tip", "L [m]", "k [W/mK]", "A [m²]", "R [K/W]"]);
+        condLayers.forEach(l => body.innerHTML += createInputRow(curr++, 'cond', l));
+        body.innerHTML += createActionRow(curr++, 'cond');
+        body.innerHTML += createEmptyRow(curr++);
+
+        body.innerHTML += createHeader(curr++, "2. TAŞINIM ŞEBEKESİ", "header-orange", ["Tip", "1", "h [W/m²K]", "A [m²]", "R [K/W]"]);
+        convLayers.forEach(l => body.innerHTML += createInputRow(curr++, 'conv', l));
+        body.innerHTML += createActionRow(curr++, 'conv');
+        body.innerHTML += createEmptyRow(curr++);
+
+        body.innerHTML += createHeader(curr++, "SİSTEM ÖZETİ", "header-green", ["ΣR [K/W]", "T_iç [°C]", "T_dış [°C]", "Süre", "Kayıp [kWh]"]);
+        body.innerHTML += createFinalRow(curr++);
+
+        for(let i = curr; i <= MAX_ROWS; i++) body.innerHTML += createEmptyRow(i);
+        calculate();
+    }
+
+    function createHeader(idx, title, cls, cols) {
+        let html = `<tr><td class="row-num">${idx}</td><td class="${cls}">${title}</td>`;
+        cols.slice(1).forEach(c => html += `<td class="${cls}">${c}</td>`);
+        for(let j=cols.length; j<MAX_COLS; j++) html += '<td></td>';
+        return html + '</tr>';
+    }
+
+    function createInputRow(idx, type, l) {
+        let html = `<tr><td class="row-num">${idx}</td><td class="label-cell"><button class="del-btn" onclick="remove('${type}', ${l.id})">×</button> ${type==='cond'?'İletim':'Taşınım'}</td>`;
+        html += `<td><input type="number" class="cell-input" value="${l.v1}" oninput="upd('${type}', ${l.id}, 'v1', this.value)"></td>`;
+        html += `<td><input type="number" class="cell-input" value="${l.v2}" oninput="upd('${type}', ${l.id}, 'v2', this.value)"></td>`;
+        html += `<td><input type="number" class="cell-input" value="${l.a}" oninput="upd('${type}', ${l.id}, 'a', this.value)"></td>`;
+        html += `<td class="res-text" id="r-${type}-${l.id}">-</td>`;
+        for(let j=5; j<MAX_COLS; j++) html += '<td></td>';
+        return html + '</tr>';
+    }
+
+    function createActionRow(idx, type) {
+        let html = `<tr><td class="row-num">${idx}</td><td colspan="5"><button class="btn-add" onclick="add('${type}')">+ Ekle</button></td>`;
+        for(let j=5; j<MAX_COLS; j++) html += '<td></td>';
+        return html + '</tr>';
+    }
+
+    function createFinalRow(idx) {
+        let html = `<tr><td class="row-num">${idx}</td><td class="res-text" id="total-r" style="color:blue">0</td>`;
+        html += `<td><input type="number" id="t-in" class="cell-input" value="25" oninput="calculate()"></td>`;
+        html += `<td><input type="number" id="t-out" class="cell-input" value="0" oninput="calculate()"></td>`;
+        html += `<td><div style="display:flex; height:100%;"><input type="number" id="t-val" class="cell-input" style="width:60%" value="1" oninput="calculate()"><select id="t-unit" class="unit-select" style="width:40%" onchange="calculate()"><option value="3600">sa</option><option value="60">dk</option><option value="1">sn</option></select></div></td>`;
+        html += `<td class="res-text" id="res-kwh" style="color:red">-</td>`;
+        for(let j=5; j<MAX_COLS; j++) html += '<td></td>';
+        return html + '</tr>';
+    }
+
+    function createEmptyRow(idx) {
+        let html = `<tr><td class="row-num">${idx}</td>`;
+        for(let j=0; j<MAX_COLS; j++) html += '<td></td>';
+        return html + '</tr>';
+    }
+
+    function add(t) { (t==='cond'?condLayers:convLayers).push({id:Date.now(), v1:t==='cond'?0.1:1, v2:t==='cond'?0.5:10, a:1}); renderBody(); }
+    function remove(t, id) { if(t==='cond') condLayers=condLayers.filter(x=>x.id!==id); else convLayers=convLayers.filter(x=>x.id!==id); renderBody(); }
+    function upd(t, id, f, v) { let l=(t==='cond'?condLayers:convLayers).find(x=>x.id===id); if(l) l[f]=parseFloat(v)||0; calculate(); }
+
+    function calculate() {
+        let sumR = 0; 
+        let auditHtml = "";
+        
+        // 1. İLETİM HESABI
+        auditHtml += `<div class="formula-section"><div class="formula-title">1. İLETİM DİRENÇLERİ (Kondüksiyon)</div>`;
+        auditHtml += `Formül: R_cond = L / (k * A)<br>`;
+        condLayers.forEach((l, i) => { 
+            let r = l.v1 / (l.v2 * l.a); 
+            sumR += r; 
+            document.getElementById(`r-cond-${l.id}`).innerText = r.toFixed(5);
+            auditHtml += `L_${i+1}=${l.v1}, k_${i+1}=${l.v2}, A_${i+1}=${l.a} => <b>R_${i+1}=${r.toFixed(5)} K/W</b><br>`;
+        });
+        auditHtml += `</div>`;
+
+        // 2. TAŞINIM HESABI
+        auditHtml += `<div class="formula-section"><div class="formula-title">2. TAŞINIM DİRENÇLERİ (Konveksiyon)</div>`;
+        auditHtml += `Formül: R_conv = 1 / (h * A)<br>`;
+        convLayers.forEach((l, i) => { 
+            let r = 1 / (l.v2 * l.a); 
+            sumR += r; 
+            document.getElementById(`r-conv-${l.id}`).innerText = r.toFixed(5);
+            auditHtml += `h_${i+1}=${l.v2}, A_${i+1}=${l.a} => <b>R_${i+1}=${r.toFixed(5)} K/W</b><br>`;
+        });
+        auditHtml += `</div>`;
+
+        const t1 = parseFloat(document.getElementById('t-in').value)||0;
+        const t2 = parseFloat(document.getElementById('t-out').value)||0;
+        const tVal = parseFloat(document.getElementById('t-val').value)||0;
+        const tUnit = parseFloat(document.getElementById('t-unit').value);
+        const totalSeconds = tVal * tUnit;
+
+        const q = sumR > 0 ? (t1 - t2) / sumR : 0;
+        const kwh = (q * totalSeconds) / 3600000;
+
+        document.getElementById('total-r').innerText = sumR.toFixed(5);
+        document.getElementById('res-kwh').innerText = kwh.toFixed(6);
+
+        // 3. TOPLAM ANALİZ HESABI
+        auditHtml += `<div class="formula-section"><div class="formula-title">3. TOPLAM ISI AKISI (Q) VE ENERJİ (E)</div>`;
+        auditHtml += `Toplam Direnç (ΣR) = ${sumR.toFixed(5)} K/W<br>`;
+        auditHtml += `Formül Q: (T_iç - T_dış) / ΣR<br>`;
+        auditHtml += `Q = (${t1} - ${t2}) / ${sumR.toFixed(5)} = <b>${q.toFixed(2)} Watt</b><br><br>`;
+        auditHtml += `Formül E: (Q * t_saniye) / 3,600,000<br>`;
+        auditHtml += `E = (${q.toFixed(2)} * ${totalSeconds}) / 3.6e6 = <b>${kwh.toFixed(6)} kWh</b>`;
+        auditHtml += `</div>`;
+
+        document.getElementById('audit-content').innerHTML = auditHtml;
+        document.getElementById('formula-display').value = `Q=ΔT/ΣR=(${t1}-${t2})/${sumR.toFixed(5)}=${q.toFixed(2)}W | E=(Q*t)/3.6e6=${kwh.toFixed(4)}kWh`;
+    }
+
+    function toggleAudit() { document.getElementById('audit-panel').classList.toggle('open'); }
+    init();
+</script>
+</body>
+</html>

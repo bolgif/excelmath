@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gelişmiş Taşınım Analizörü - Newton Soğuma</title>
+    <style>
+        :root {
+            --excel-green: #217346;
+            --excel-border: #d1d1d1;
+            --excel-header-bg: #f8f9fa;
+            --cell-height: 28px;
+            --header-width: 50px;
+        }
+
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; font-size: 13px; overflow: hidden; display: flex; flex-direction: column; }
+        
+        .ribbon { background: var(--excel-green); color: white; padding: 8px 15px; font-size: 12px; flex-shrink: 0; border-bottom: 2px solid #1a5a37; }
+        .formula-bar { background: white; border-bottom: 1px solid var(--excel-border); display: flex; align-items: center; height: 35px; padding: 0 10px; flex-shrink: 0; }
+        .fx { color: var(--excel-green); font-weight: bold; font-style: italic; margin-right: 10px; border-right: 1px solid #ccc; padding-right: 10px; }
+        #formula-display { border: none; outline: none; flex: 1; font-family: 'Consolas', monospace; color: #444; background: transparent; }
+
+        .spreadsheet-container { flex-grow: 1; overflow: auto; background: #e1e1e1; position: relative; }
+        table { border-collapse: collapse; table-layout: fixed; background: white; width: auto; }
+
+        th, .row-num { background: var(--excel-header-bg); border: 1px solid var(--excel-border); font-weight: normal; color: #666; text-align: center; position: sticky; top: 0; z-index: 10; height: var(--cell-height); }
+        .row-num { left: 0; width: var(--header-width); z-index: 11; position: sticky; }
+
+        td { border: 1px solid var(--excel-border); height: var(--cell-height); padding: 0; vertical-align: middle; }
+        .cell-input { width: 100%; height: 100%; border: none; padding: 0 8px; outline: none; background: transparent; font-size: 12px; box-sizing: border-box; }
+        .cell-input:focus { box-shadow: inset 0 0 0 2px var(--excel-green); background: #fffdec; }
+        .cell-input:disabled { background: #f0f0f0; color: #111; font-weight: bold; }
+        
+        .unit-select { width: 100px; height: 100%; border: none; border-left: 1px solid #ddd; background: #f9f9f9; font-size: 11px; cursor: pointer; outline: none; }
+        .target-btn { width: 100%; height: 100%; border: none; background: #eee; cursor: pointer; font-size: 10px; color: #666; }
+        .target-btn.active { background: var(--excel-green); color: white; font-weight: bold; }
+
+        .header-blue { background: #0059b3 !important; color: white !important; font-weight: bold; text-align: center; }
+        .header-orange { background: #e67e22 !important; color: white !important; font-weight: bold; text-align: center; }
+        .label-cell { background: #f2f2f2; font-weight: bold; padding-left: 10px; white-space: nowrap; }
+        
+        .audit-panel { background: #f8f9fa; border-top: 2px solid var(--excel-green); flex-shrink: 0; }
+        .audit-header { padding: 10px 15px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: bold; color: var(--excel-green); background: #f1f1f1; border-bottom: 1px solid #ddd; }
+        .audit-content { padding: 20px; display: none; font-size: 14px; line-height: 1.6; color: #333; max-height: 350px; overflow-y: auto; }
+        .audit-panel.open .audit-content { display: block; }
+        
+        .step-container { margin-bottom: 25px; border-left: 5px solid var(--excel-green); padding-left: 15px; }
+        .step-title { font-weight: bold; color: #2c3e50; margin-bottom: 5px; text-decoration: underline; font-size: 13px; }
+        .formula-line { font-family: 'Consolas', monospace; color: #c62828; font-size: 15px; }
+        .sub-line { font-family: 'Consolas', monospace; color: #555; font-size: 14px; }
+        .res-line { font-weight: bold; color: #217346; font-size: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="ribbon"><strong>Dosya</strong> &nbsp; Gelişmiş Mod &nbsp; <strong>Newton Soğuma Analiz Sistemi</strong></div>
+<div class="formula-bar"><span class="fx">fx</span><input type="text" id="formula-display" readonly></div>
+
+<div class="spreadsheet-container">
+    <table id="excelTable">
+        <thead id="thead"></thead>
+        <tbody id="tbody"></tbody>
+    </table>
+</div>
+
+<div id="audit-panel" class="audit-panel">
+    <div class="audit-header" onclick="toggleAudit()">
+        <span id="audit-title">📝 HESAPLAMA ADIMLARI VE DETAYLI DÖKÜM</span>
+    </div>
+    <div id="audit-content" class="audit-content">Hesaplamak istediğiniz değişkenin yanındaki "HEDEF" butonuna tıklayın.</div>
+</div>
+
+<script>
+    const ROWS = 50; const COLS = 15;
+    let currentTarget = "Q";
+
+    let head = '<tr><th class="row-num"></th>';
+    for(let i=0; i<COLS; i++) head += `<th style="width:${i===1?200:i===0?250:110}px">${String.fromCharCode(65+i)}</th>`;
+    document.getElementById('thead').innerHTML = head + '</tr>';
+
+    let body = '';
+    for(let r=1; r<=ROWS; r++) {
+        body += `<tr><td class="row-num">${r}</td>`;
+        for(let c=0; c<COLS; c++) body += `<td id="c-${r}-${c}"></td>`;
+        body += '</tr>';
+    }
+    document.getElementById('tbody').innerHTML = body;
+
+    const setCell = (r, c, html, cls="") => {
+        const el = document.getElementById(`c-${r}-${c}`);
+        if(el) { el.innerHTML = html; if(cls) el.className = cls; }
+        return el;
+    };
+
+    setCell(1, 0, "PARAMETRE ADI", "header-blue");
+    setCell(1, 1, "DEĞER", "header-blue");
+    setCell(1, 2, "BİRİM", "header-blue");
+    setCell(1, 3, "HEDEF SEÇ", "header-blue");
+
+    const params = [
+        {id: "Q", label: "Isı Transfer Hızı (Q) [W]", u:[{n:"Watt",v:1},{n:"kW",v:1000}]},
+        {id: "h", label: "Taşınım Katsayısı (h)", u:[{n:"W/m²K",v:1},{n:"W/cm²K",v:10000}]},
+        {id: "A", label: "Yüzey Alanı (A)", u:[{n:"m²",v:1},{n:"cm²",v:0.0001}]},
+        {id: "dT", label: "Sıcaklık Farkı (ΔT)", u:[{n:"°C / K",v:1}]}
+    ];
+
+    params.forEach((p, i) => {
+        const r = i + 2;
+        setCell(r, 0, p.label, "label-cell");
+        setCell(r, 1, `<input type="number" id="in-${p.id}" class="cell-input" oninput="calculate()">`);
+        setCell(r, 2, `<select id="u-${p.id}" class="unit-select" onchange="calculate()">${p.u.map(x=>`<option value="${x.v}">${x.n}</option>`).join('')}</select>`);
+        setCell(r, 3, `<button id="btn-${p.id}" class="target-btn ${p.id==='Q'?'active':''}" onclick="setTarget('${p.id}')">HEDEF</button>`);
+    });
+
+    setCell(7, 0, "ZAMAN ANALİZİ (kWh İçin)", "header-orange");
+    setCell(8, 0, "Süre (t):", "label-cell");
+    setCell(8, 1, `<input type="number" id="in-time" class="cell-input" value="1" oninput="calculate()">`);
+    setCell(8, 2, `<select id="u-time" class="unit-select" onchange="calculate()"><option value="3600">Saat</option><option value="60">Dakika</option><option value="1">Saniye</option></select>`);
+
+    setCell(10, 0, "ENERJİ KAYBI SONUCU", "header-orange");
+    setCell(11, 0, "Toplam Kayıp (kWh):", "label-cell");
+    setCell(11, 1, `<div id="res-kwh" class="cell-input" style="line-height:28px; color:red; font-weight:bold;"></div>`).colSpan = 2;
+
+    function setTarget(id) {
+        currentTarget = id;
+        document.querySelectorAll('.target-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(`btn-${id}`).classList.add('active');
+        document.querySelectorAll('.cell-input').forEach(i => i.disabled = false);
+        document.getElementById(`in-${id}`).disabled = true;
+        document.getElementById(`in-${id}`).value = "";
+        calculate();
+    }
+
+    window.toggleAudit = () => document.getElementById('audit-panel').classList.toggle('open');
+    setTarget('Q');
+
+    function calculate() {
+        const vals = {};
+        const units = {};
+        params.forEach(p => {
+            vals[p.id] = parseFloat(document.getElementById(`in-${p.id}`).value);
+            units[p.id] = parseFloat(document.getElementById(`u-${p.id}`).value);
+        });
+
+        const time = parseFloat(document.getElementById('in-time').value) * parseFloat(document.getElementById('u-time').value);
+        let formula = "", steps = "", resultSI = 0;
+
+        if (currentTarget === "Q") {
+            if (!isNaN(vals.h) && !isNaN(vals.A) && !isNaN(vals.dT)) {
+                resultSI = (vals.h * units.h) * (vals.A * units.A) * (vals.dT * units.dT);
+                formula = "Q = h · A · ΔT";
+                steps = `${(vals.h * units.h).toFixed(2)} · ${(vals.A * units.A).toFixed(4)} · ${vals.dT * units.dT}`;
+            }
+        } else if (currentTarget === "h") {
+            if (!isNaN(vals.Q) && !isNaN(vals.A) && !isNaN(vals.dT)) {
+                resultSI = (vals.Q * units.Q) / ((vals.A * units.A) * (vals.dT * units.dT));
+                formula = "h = Q / (A · ΔT)";
+                steps = `${vals.Q * units.Q} / (${(vals.A * units.A).toFixed(4)} · ${vals.dT * units.dT})`;
+            }
+        } else if (currentTarget === "A") {
+            if (!isNaN(vals.Q) && !isNaN(vals.h) && !isNaN(vals.dT)) {
+                resultSI = (vals.Q * units.Q) / ((vals.h * units.h) * (vals.dT * units.dT));
+                formula = "A = Q / (h · ΔT)";
+                steps = `${vals.Q * units.Q} / (${(vals.h * units.h).toFixed(2)} · ${vals.dT * units.dT})`;
+            }
+        } else if (currentTarget === "dT") {
+            if (!isNaN(vals.Q) && !isNaN(vals.h) && !isNaN(vals.A)) {
+                resultSI = (vals.Q * units.Q) / ((vals.h * units.h) * (vals.A * units.A));
+                formula = "ΔT = Q / (h · A)";
+                steps = `${vals.Q * units.Q} / (${(vals.h * units.h).toFixed(2)} · ${(vals.A * units.A).toFixed(4)})`;
+            }
+        }
+
+        if (resultSI !== 0) {
+            const finalVal = resultSI / units[currentTarget];
+            document.getElementById(`in-${currentTarget}`).value = finalVal.toFixed(6);
+            
+            const qForEnergy = currentTarget === "Q" ? resultSI : vals.Q * units.Q;
+            const kwh = (qForEnergy * time) / 3600000;
+            document.getElementById('res-kwh').innerText = kwh.toFixed(6) + " kWh";
+
+            document.getElementById('audit-content').innerHTML = `
+                <div class="step-container">
+                    <div class="step-title">Hedef Parametre Hesaplama: ${currentTarget}</div>
+                    <div class="formula-line">${formula}</div>
+                    <div class="sub-line">Yerine Koy: ${steps}</div>
+                    <div class="res-line">Sonuç: ${finalVal.toFixed(6)}</div>
+                </div>
+                <div class="step-container">
+                    <div class="step-title">Enerji Kaybı Analizi</div>
+                    <div class="sub-line">E = (Q_Watt · t_sn) / 3,600,000</div>
+                    <div class="res-line">Kayıp: ${kwh.toFixed(6)} kWh</div>
+                </div>
+            `;
+            document.getElementById('formula-display').value = `${formula} = ${finalVal.toFixed(4)} | Enerji: ${kwh.toFixed(6)} kWh`;
+        }
+    }
+</script>
+</body>
+</html>
