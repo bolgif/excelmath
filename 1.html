@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eşanjör Tasarım Paneli v28.0</title>
+    <style>
+        :root {
+            --excel-green: #217346;
+            --excel-border: #d1d1d1;
+            --excel-header-bg: #f8f9fa;
+            --cell-height: 14px;
+            --col-header-height: 20px;
+            --row-num-width: 35px;
+            --grid-line: #e2e2e2;
+        }
+
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; font-size: 9px; overflow: hidden; display: flex; flex-direction: column; background: #e1e1e1; }
+        .ribbon { background: var(--excel-green); color: white; padding: 4px 10px; font-size: 10px; flex-shrink: 0; font-weight: bold; }
+        .formula-bar { background: white; border-bottom: 1px solid var(--excel-border); display: flex; align-items: center; height: 22px; padding: 0 5px; flex-shrink: 0; }
+        .fx { color: var(--excel-green); font-weight: bold; font-style: italic; margin-right: 8px; border-right: 1px solid #ccc; padding-right: 8px; font-size: 11px; }
+        #formula-display { border: none; outline: none; flex: 1; font-family: 'Consolas', monospace; color: #444; background: transparent; font-size: 10px; }
+
+        .spreadsheet-viewport { flex-grow: 1; overflow: auto; position: relative; }
+        table { border-collapse: collapse; table-layout: fixed; background: white; border-spacing: 0; }
+        
+        th { background: var(--excel-header-bg); border: 1px solid var(--excel-border); font-weight: normal; color: #666; height: var(--col-header-height); position: sticky; top: 0; z-index: 10; font-size: 8px; }
+        .row-num { background: var(--excel-header-bg); border: 1px solid var(--excel-border); text-align: center; color: #666; width: var(--row-num-width); position: sticky; left: 0; z-index: 9; font-size: 8px; }
+        th:first-child { z-index: 11; left: 0; }
+
+        td { border: 1px solid var(--grid-line); height: var(--cell-height); padding: 0; vertical-align: middle; width: 120px; overflow: hidden; }
+        .cell-input { width: 100%; height: 100%; border: none; padding: 0 4px; outline: none; background: transparent; font-size: 9px; box-sizing: border-box; }
+        .cell-input:focus { background: #fffdec; box-shadow: inset 0 0 0 1px var(--excel-green); z-index: 5; position: relative; }
+        
+        .unit-select { width: 100%; height: 100%; border: none; background: #f4f4f4; font-size: 7.5px; cursor: pointer; outline: none; text-align: center; border-left: 1px solid #ddd; }
+        .target-btn { width: 100%; height: 100%; border: none; background: #eee; color: #888; font-size: 7px; cursor: pointer; font-weight: bold; }
+        .target-btn.active { background: var(--excel-green); color: white; }
+
+        .s-blue { background: #0059b3 !important; color: white !important; font-weight: bold; padding-left: 4px; }
+        .s-orange { background: #e67e22 !important; color: white !important; font-weight: bold; padding-left: 4px; }
+        .s-red { background: #c62828 !important; color: white !important; font-weight: bold; padding-left: 4px; }
+        .s-purple { background: #6a1b9a !important; color: white !important; font-weight: bold; padding-left: 4px; }
+        .s-pink { background: #d81b60 !important; color: white !important; font-weight: bold; padding-left: 4px; }
+        .s-green { background: #2e7d32 !important; color: white !important; font-weight: bold; padding-left: 4px; }
+        
+        .label-cell { background: #f2f2f2; font-weight: bold; padding-left: 4px; }
+        .res-cell { background: #fffde7 !important; font-weight: bold; text-align: center; color: #f57f17; }
+        .auto-calc { background: #e8f5e9 !important; color: #1b5e20 !important; font-weight: bold; }
+
+        .audit-panel { background: #f8f9fa; border-top: 2px solid var(--excel-green); flex-shrink: 0; }
+        .audit-header { padding: 6px 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: bold; color: var(--excel-green); background: #eee; border-bottom: 1px solid #ddd; font-size: 10px; }
+        .audit-header::after { content: '▲'; font-size: 8px; transition: 0.3s; }
+        .audit-panel.closed .audit-header::after { transform: rotate(180deg); }
+        .audit-content { padding: 10px; display: block; font-family: 'Consolas', monospace; font-size: 10px; line-height: 1.4; color: #333; max-height: 120px; overflow-y: auto; }
+        .audit-panel.closed .audit-content { display: none; }
+        .formula-step { color: #c62828; font-weight: bold; background: #ffeeee; padding: 1px 3px; border-radius: 2px; }
+    </style>
+</head>
+<body>
+
+<div class="ribbon">Eşanjör_Tasarım_Dosyası_v28.xlsx - Excel</div>
+<div class="formula-bar"><span class="fx">fx</span><input type="text" id="formula-display" readonly></div>
+
+<div class="spreadsheet-viewport">
+    <table id="excelTable">
+        <thead><tr id="col-headers"><th></th></tr></thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+</div>
+
+<div id="audit-panel" class="audit-panel">
+    <div class="audit-header" onclick="toggleAudit()">
+        <span id="audit-title">📊 ANALİZ VE HESAPLAMA RAPORU</span>
+    </div>
+    <div id="audit-content" class="audit-content">
+        Hesaplama detaylarını görmek için verileri girin.
+    </div>
+</div>
+
+<script>
+    const pipeTable = {
+        "1/2": { od: 21.3, sch5: 1.65, sch10: 2.11, sch40: 2.77 },
+        "3/4": { od: 26.7, sch5: 1.65, sch10: 2.11, sch40: 2.87 },
+        "1": { od: 33.4, sch5: 1.65, sch10: 2.77, sch40: 3.38 },
+        "2": { od: 60.3, sch5: 1.65, sch10: 2.77, sch40: 3.91 }
+    };
+
+    // DÜZELTME: Default değerler temizlendi
+    let state = {
+        config: { pass: 1, flow: 'counter', shell: 'cold' },
+        hot: { m: null, cp: 4187, ti: null, to: null, q: null, target: 'q', uM: 'kg/s', uQ: 'W' },
+        cold: { m: null, cp: 4187, ti: null, to: null, q: null, target: 'to', uM: 'kg/s', uQ: 'W' },
+        lmtd: null, f: 1.0, area: null, u_tahmin: 1.275,
+        pipe: { od: 33.4, wall: 3.38, id: 26.64, nps: "1", sch: "sch40", manual: false }
+    };
+
+    function init() {
+        const h = document.getElementById('col-headers');
+        for(let i=0; i<26; i++) h.innerHTML += `<th>${String.fromCharCode(65+i)}</th>`;
+        
+        // Grid bir kez oluşturulur
+        const body = document.getElementById('tableBody');
+        body.innerHTML = "";
+        for(let r=1; r<=100; r++) {
+            let tr = `<tr><td class="row-num">${r}</td>`;
+            for(let c=0; c<26; c++) tr += `<td id="c-${String.fromCharCode(65+c)}${r}"></td>`;
+            body.innerHTML += tr + `</tr>`;
+        }
+        
+        fillExcel();
+        calculate();
+    }
+
+    function toggleAudit() {
+        document.getElementById('audit-panel').classList.toggle('closed');
+    }
+
+    function fillExcel() {
+        setCell('A1', 'ADIM 1: KONFİGÜRASYON', 's-blue', 2);
+        setCell('A2', 'Geçiş Sayısı / Akış Türü:', 'label-cell');
+        setCell('B2', `<select class="unit-select" onchange="state.config.pass=parseInt(this.value);calculate();"><option value="1">1-Pass</option><option value="2">2-Pass</option></select>`);
+        setCell('C2', `<select class="unit-select" onchange="state.config.flow=this.value;calculate();"><option value="counter">Karşıt Akış</option><option value="parallel">Paralel Akış</option><option value="cross">Çapraz Akış</option></select>`);
+        
+        setCell('A3', 'ADIM 2: AKIŞKAN YERLEŞİMİ', 's-orange', 2);
+        setCell('A4', 'Gövde Tarafı Akışkan:', 'label-cell');
+        setCell('B4', `<select class="unit-select" onchange="state.config.shell=this.value;calculate();"><option value="cold">Soğuk</option><option value="hot">Sıcak</option></select>`);
+
+        setCell('A6', 'ADIM 3: SICAK AKIŞKAN (HOT)', 's-red', 2);
+        setCell('C6', 'BİRİM', 's-red'); setCell('D6', 'HEDEF', 's-red');
+        addInputRow(7, 'Debi (ṁ)', 'hot', 'm', ['kg/s', 'ton/sa']);
+        addInputRow(8, 'Özgül Isı (Cp)', 'hot', 'cp', ['J/kgK']);
+        addInputRow(9, 'Giriş Sıc. (Ti)', 'hot', 'ti', ['°C']);
+        addInputRow(10, 'Çıkış Sıc. (To)', 'hot', 'to', ['°C']);
+        addInputRow(11, 'Isıl Yük (Q)', 'hot', 'q', ['W', 'kW']);
+
+        setCell('A13', 'ADIM 3: SOĞUK AKIŞKAN (COLD)', 's-blue', 2);
+        setCell('C13', 'BİRİM', 's-blue'); setCell('D13', 'HEDEF', 's-blue');
+        addInputRow(14, 'Debi (ṁ)', 'cold', 'm', ['kg/s', 'ton/sa']);
+        addInputRow(15, 'Özgül Isı (Cp)', 'cold', 'cp', ['J/kgK']);
+        addInputRow(16, 'Giriş Sıc. (Ti)', 'cold', 'ti', ['°C']);
+        addInputRow(17, 'Çıkış Sıc. (To)', 'cold', 'to', ['°C']);
+        addInputRow(18, 'Isıl Yük (Q)', 'cold', 'q', ['W', 'kW']);
+
+        setCell('A20', 'ADIM 4 & 5: LMTD & F FAKTÖRÜ', 's-purple', 2);
+        setCell('A21', 'LMTD (Karşıt):', 'label-cell'); setCell('B21', '-', 'res-cell', 1, 'res-lmtd');
+        setCell('C21', '°C');
+        setCell('A22', 'Düzeltme Faktörü (F):', 'label-cell'); setCell('B22', '-', 'res-cell', 1, 'res-f');
+        setCell('C22', 'Efektif');
+
+        setCell('A24', 'ADIM 6-8: UA & TAHMİNİ ALAN', 's-pink', 2);
+        setCell('A25', 'Gerekli UA Değeri:', 'label-cell'); setCell('B25', '-', 'res-cell', 1, 'res-ua');
+        setCell('C25', 'kW/K');
+        setCell('A26', 'U Tahmini (Ukabul):', 'label-cell');
+        setCell('B26', `<select class="unit-select" onchange="updateU(this.value)"><option value="su-su">Su-Su</option><option value="su-yag">Su-Yağ</option><option value="custom">Özel</option></select>`);
+        setCell('C26', `<input type="number" id="v-u" class="cell-input" readonly value="1.275" oninput="state.u_tahmin=parseFloat(this.value);calculate();">`);
+        setCell('A27', 'Tahmini Alan (A):', 'label-cell'); setCell('B27', '-', 'res-cell', 1, 'res-area');
+        setCell('C27', 'm²');
+
+        setCell('A29', 'ADIM 9: BORU ÖZELLİKLERİ', 's-green', 2);
+        setCell('A30', 'NPS / SCH Seçimi:', 'label-cell');
+        setCell('B30', `<select class="unit-select" onchange="updatePipe(this.value, 'nps')"><option value="1/2">1/2"</option><option value="3/4">3/4"</option><option value="1" selected>1"</option><option value="2">2"</option><option value="custom">Özel Giriş</option></select>`);
+        setCell('C30', `<select id="sel-sch" class="unit-select" onchange="updatePipe(this.value, 'sch')"><option value="sch5">SCH 5</option><option value="sch10">SCH 10</option><option value="sch40" selected>SCH 40</option></select>`);
+        setCell('A31', 'OD / t (mm):', 'label-cell');
+        setCell('B31', `<input type="number" id="v-od" class="cell-input" readonly value="33.4" oninput="manualPipe()">`);
+        setCell('C31', `<input type="number" id="v-wall" class="cell-input" readonly value="3.38" oninput="manualPipe()">`);
+        setCell('A32', 'Boru İç Çapı (ID):', 'label-cell'); setCell('B32', '-', 'res-cell', 1, 'res-id');
+        setCell('C32', 'mm');
+    }
+
+    function setCell(id, html, cls='', span=1, rId=null) {
+        let td = document.getElementById(`c-${id}`); if(!td) return;
+        td.innerHTML = html; if(cls) td.className = cls; if(rId) td.id = rId;
+        if(span>1) {
+            let c = id[0], r = id.substring(1); td.colSpan = span;
+            for(let i=1; i<span; i++) {
+                let neighbor = document.getElementById(`c-${String.fromCharCode(c.charCodeAt(0)+i)}${r}`);
+                if(neighbor) neighbor.style.display = 'none';
+            }
+        }
+    }
+
+    function addInputRow(r, lbl, s, k, units) {
+        setCell(`A${r}`, lbl, 'label-cell');
+        let isT = state[s].target === k;
+        let val = state[s][k] !== null ? state[s][k] : "";
+        setCell(`B${r}`, `<input type="number" id="v-${s}-${k}" class="cell-input ${isT?'auto-calc':''}" ${isT?'readonly':''} value="${val}" oninput="state.${s}.${k}=parseFloat(this.value);calculate();">`);
+        setCell(`C${r}`, `<select class="unit-select" onchange="state.${s}['u'+'${k.toUpperCase()}']=this.value;calculate();">${units.map(u=>`<option>${u}</option>`).join('')}</select>`);
+        setCell(`D${r}`, `<button class="target-btn ${isT?'active':''}" id="btn-${s}-${k}" onclick="setTarget('${s}','${k}')">SET</button>`);
+    }
+
+    // DÜZELTME: Hedef değişince tabloyu silmek yerine sadece inputları günceller
+    function setTarget(s, k) { 
+        state[s].target = k; 
+        const params = ['m', 'cp', 'ti', 'to', 'q'];
+        
+        params.forEach(p => {
+            const input = document.getElementById(`v-${s}-${p}`);
+            const btn = document.getElementById(`btn-${s}-${p}`);
+            if(p === k) {
+                input.readOnly = true;
+                input.classList.add('auto-calc');
+                btn.classList.add('active');
+            } else {
+                input.readOnly = false;
+                input.classList.remove('auto-calc');
+                btn.classList.remove('active');
+            }
+        });
+        calculate(); 
+    }
+
+    function updateU(v) {
+        let i = document.getElementById('v-u'); i.readOnly = (v !== 'custom');
+        if(v === 'su-su') state.u_tahmin = 1.275; else if(v === 'su-yag') state.u_tahmin = 0.225;
+        i.value = state.u_tahmin; calculate();
+    }
+
+    function updatePipe(v, type) {
+        if(type === 'nps') state.pipe.nps = v; else state.pipe.sch = v;
+        let odI = document.getElementById('v-od'), wI = document.getElementById('v-wall');
+        if(state.pipe.nps === 'custom') { odI.readOnly = wI.readOnly = false; }
+        else {
+            odI.readOnly = wI.readOnly = true;
+            let d = pipeTable[state.pipe.nps];
+            state.pipe.od = d.od; state.pipe.wall = d[state.pipe.sch] || d.sch40;
+            odI.value = state.pipe.od; wI.value = state.pipe.wall;
+        }
+        manualPipe();
+    }
+
+    function manualPipe() {
+        state.pipe.od = parseFloat(document.getElementById('v-od').value) || 0;
+        state.pipe.wall = parseFloat(document.getElementById('v-wall').value) || 0;
+        state.pipe.id = state.pipe.od - (2 * state.pipe.wall);
+        calculate();
+    }
+
+    function calculate() {
+        let logSteps = [];
+        ['hot', 'cold'].forEach(s => {
+            let st = state[s], t = st.target;
+            if (t==='q' && st.m && st.cp && st.ti && st.to) {
+                st.q = st.m * st.cp * Math.abs(st.ti - st.to);
+                logSteps.push(`<b>${s.toUpperCase()} Q:</b> ṁ*Cp*ΔT = <span class="formula-step">${st.q.toFixed(0)} W</span>`);
+            }
+            else if (t==='to' && st.m && st.cp && st.ti && st.q) {
+                st.to = (s==='hot')? st.ti-(st.q/(st.m*st.cp)) : st.ti+(st.q/(st.m*st.cp));
+                logSteps.push(`<b>${s.toUpperCase()} To:</b> ${s==='hot'?'Ti-(Q/mCp)':'Ti+(Q/mCp)'} = <span class="formula-step">${st.to.toFixed(2)} °C</span>`);
+            }
+        });
+        
+        let q = (state.hot.target !== 'q' && state.hot.q) ? state.hot.q : (state.cold.target !== 'q' && state.cold.q) ? state.cold.q : 0;
+        if(q) { state.hot.q = state.cold.q = q; }
+
+        if (state.hot.ti && state.hot.to && state.cold.ti && state.cold.to) {
+            let dt1 = state.hot.ti - state.cold.to, dt2 = state.hot.to - state.cold.ti;
+            state.lmtd = (dt1===dt2)? dt1 : (dt1>0 && dt2>0 ? (dt1-dt2)/Math.log(dt1/dt2) : 0);
+            logSteps.push(`<b>LMTD:</b> (ΔT1-ΔT2)/ln(ΔT1/ΔT2) = <span class="formula-step">${state.lmtd.toFixed(2)} °C</span>`);
+            state.f = (state.config.flow === 'counter' && state.config.pass === 1) ? 1.0 : 0.85;
+            
+            if(state.hot.q && state.lmtd) {
+                state.ua = (state.hot.q / (state.f * state.lmtd)) / 1000;
+                state.area = state.ua / state.u_tahmin;
+                logSteps.push(`<b>Alan:</b> UA/U_tahmin = <span class="formula-step">${state.area.toFixed(2)} m²</span>`);
+            }
+        }
+        document.getElementById('audit-content').innerHTML = logSteps.length > 0 ? logSteps.join('<br>') : "Veri girişi bekleniyor...";
+        updateUI();
+    }
+
+    function updateUI() {
+        ['hot', 'cold'].forEach(s => {
+            ['m','cp','ti','to','q'].forEach(k => {
+                let el = document.getElementById(`v-${s}-${k}`);
+                if (el && state[s].target===k && state[s][k] !== null) el.value = state[s][k].toFixed(2);
+            });
+        });
+        if(document.getElementById('res-lmtd')) document.getElementById('res-lmtd').innerText = state.lmtd ? state.lmtd.toFixed(2) : "-";
+        if(document.getElementById('res-f')) document.getElementById('res-f').innerText = state.f ? state.f.toFixed(3) : "1.000";
+        if(document.getElementById('res-ua')) document.getElementById('res-ua').innerText = state.ua ? state.ua.toFixed(3) : "-";
+        if(document.getElementById('res-area')) document.getElementById('res-area').innerText = state.area ? state.area.toFixed(2) : "-";
+        if(document.getElementById('res-id')) document.getElementById('res-id').innerText = state.pipe.id ? state.pipe.id.toFixed(2) : "-";
+        document.getElementById('formula-display').value = `UA = Q/(F*LMTD) | SONUÇ = ${state.ua ? state.ua.toFixed(3) : 0} kW/K`;
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>
