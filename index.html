@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Isıl Analiz Merkezi - Güvenli Giriş</title>
+    <style>
+        /* Başlangıçta tüm sayfa gizli */
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            visibility: hidden;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background-color: #f3f2f1;
+        }
+        /* Şifre doğru olunca görünür olacak */
+        body.visible {
+            visibility: visible;
+        }
+
+        /* Aşağıdaki stiller aynen korunmuştur */
+        :root {
+            --excel-green: #107c41;
+            --excel-bg: #f3f2f1;
+            --border-color: #d1d1d1;
+            --cell-border: #e2e2e2;
+            --text-color: #323130;
+            --menu-bg: #ffffff;
+            --menu-hover: #f0f0f0;
+        }
+
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', Tahoma, sans-serif; overflow: hidden; display: flex; flex-direction: column; background-color: var(--excel-bg); }
+
+        /* Üst Ribbon Menü */
+        .excel-ribbon-tabs { background: var(--excel-green); color: white; display: flex; padding: 0 10px; height: 32px; align-items: center; font-size: 12px; gap: 15px; flex-shrink: 0; }
+        .ribbon-tab { cursor: pointer; padding: 0 8px; height: 100%; display: flex; align-items: center; opacity: 0.8; }
+        .ribbon-tab.active { font-weight: bold; border-bottom: 2px solid white; opacity: 1; }
+
+        /* Araç Çubuğu Bölümü */
+        .excel-toolbar { background: white; border-bottom: 1px solid var(--border-color); height: 38px; display: flex; align-items: center; padding: 0 15px; gap: 20px; flex-shrink: 0; font-size: 11px; color: var(--text-color); }
+        .toolbar-item { cursor: pointer; padding: 4px 8px; border-radius: 2px; }
+        .toolbar-item:hover { background-color: #f3f2f1; }
+
+        /* Formül Çubuğu */
+        .formula-container { background: white; border-bottom: 1px solid var(--border-color); display: flex; height: 30px; align-items: center; padding: 0 5px; flex-shrink: 0; }
+        .name-box { width: 60px; border-right: 1px solid var(--border-color); text-align: center; font-size: 12px; color: var(--text-color); font-weight: 500; }
+        .fx-icon { padding: 0 10px; font-style: italic; color: #666; font-weight: bold; border-right: 1px solid var(--border-color); cursor: default; }
+        #formula-bar { border: none; outline: none; flex: 1; padding: 0 10px; font-size: 12px; font-family: 'Consolas', monospace; }
+
+        /* Ana İçerik Alanı - Hem Tablo hem IFrame için */
+        .main-content { flex-grow: 1; overflow: auto; background: #fff; position: relative; }
+        
+        /* Excel Tablo Konteynırı */
+        #excel-container { width: 100%; height: 100%; overflow: auto; }
+        table { border-collapse: collapse; table-layout: fixed; width: auto; }
+        th { background: #f8f9fa; border: 1px solid var(--border-color); font-weight: normal; color: #444; height: 22px; position: sticky; top: 0; z-index: 10; font-size: 11px; width: 100px; }
+        .row-num { background: #f8f9fa; border: 1px solid var(--border-color); text-align: center; color: #444; width: 40px; position: sticky; left: 0; z-index: 9; font-size: 11px; }
+        th:first-child { z-index: 11; left: 0; }
+        td { border: 1px solid var(--cell-border); height: 22px; padding: 0; vertical-align: middle; }
+        .cell-input { width: 100%; height: 100%; border: none; padding: 0 4px; outline: none; font-size: 12px; box-sizing: border-box; background: transparent; display: block; }
+        .cell-input:focus { background: white; box-shadow: inset 0 0 0 2px var(--excel-green); z-index: 5; position: relative; }
+
+        /* IFrame Konteynırı (Başlangıçta gizli) */
+        #iframe-container { width: 100%; height: 100%; display: none; background: white; }
+        #dynamic-frame { width: 100%; height: 100%; border: none; display: block; }
+
+        /* Alt Sayfa Sekmeleri */
+        .footer-bar { background: white; border-top: 1px solid var(--border-color); height: 30px; display: flex; align-items: center; padding: 0 10px; font-size: 12px; flex-shrink: 0; position: relative; }
+        .sheet-tab { padding: 0 15px; color: var(--excel-green); font-weight: bold; border-bottom: 3px solid var(--excel-green); height: 100%; display: flex; align-items: center; background: #fff; cursor: pointer; }
+        .add-tab { margin-left: 10px; color: #666; cursor: pointer; font-size: 16px; font-weight: bold; }
+
+        /* DROPDOWN MENÜ (3 Çizgi) - Güncellendi */
+        .dropdown {
+            position: relative;
+            display: inline-block;
+            cursor: default;
+            font-size: 18px;
+            margin-right: 12px;
+            color: #666;
+            user-select: none;
+        }
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            bottom: 30px;
+            left: 0;
+            background-color: var(--menu-bg);
+            min-width: 240px;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+            z-index: 1000;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            font-size: 13px;
+            font-weight: normal;
+            color: #333;
+        }
+        .dropdown:not(.open):hover .dropdown-content {
+            display: block;
+        }
+        .dropdown.open .dropdown-content {
+            display: block;
+        }
+        .dropdown-content a {
+            color: black;
+            padding: 8px 16px;
+            text-decoration: none;
+            display: block;
+            font-family: 'Segoe UI', sans-serif;
+            border-bottom: 1px solid #f0f0f0;
+            transition: 0.1s;
+        }
+        .dropdown-content a:last-child {
+            border-bottom: none;
+        }
+        .dropdown-content a:hover {
+            background-color: var(--menu-hover);
+            color: var(--excel-green);
+        }
+        .menu-category {
+            font-weight: bold;
+            background-color: #f8f9fa;
+            padding: 6px 16px;
+            font-size: 11px;
+            color: #666;
+            border-bottom: 1px solid #eaeaea;
+            pointer-events: none;
+        }
+        .menu-icon {
+            cursor: pointer;
+            display: inline-block;
+            font-size: 18px;
+            font-weight: 500;
+            padding: 4px;
+            border-radius: 4px;
+        }
+        .menu-icon:hover {
+            background-color: rgba(0,0,0,0.05);
+        }
+    </style>
+</head>
+<body>
+    <!-- Sayfanın tamamı (şifre doğru olunca görünecek) -->
+    <div class="excel-ribbon-tabs">
+        <div class="ribbon-tab">Dosya</div>
+        <div class="ribbon-tab active">Giriş</div>
+        <div class="ribbon-tab">Ekle</div>
+        <div class="ribbon-tab">Sayfa Düzeni</div>
+        <div class="ribbon-tab">Formüller</div>
+        <div class="ribbon-tab">Veri</div>
+        <div class="ribbon-tab">Gözden Geçir</div>
+        <div class="ribbon-tab">Görünüm</div>
+    </div>
+
+    <div class="excel-toolbar">
+        <div class="toolbar-item">Pano</div>
+        <div style="color:#ccc">|</div>
+        <div class="toolbar-item">Yazı Tipi</div>
+        <div style="color:#ccc">|</div>
+        <div class="toolbar-item">Hizalama</div>
+        <div style="color:#ccc">|</div>
+        <div class="toolbar-item">Sayı</div>
+    </div>
+
+    <div class="formula-container">
+        <div class="name-box" id="active-cell-addr">A1</div>
+        <div class="fx-icon">fx</div>
+        <input type="text" id="formula-bar" placeholder="">
+    </div>
+
+    <div class="main-content">
+        <!-- Excel Tablo Konteynırı -->
+        <div id="excel-container">
+            <table id="excelTable">
+                <thead>
+                    <tr id="col-headers">
+                        <th style="width:40px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="table-body">
+                </tbody>
+            </table>
+        </div>
+
+        <!-- IFrame Konteynırı (Diğer modüller burada açılacak) -->
+        <div id="iframe-container">
+            <iframe id="dynamic-frame" title="Isıl Analiz Modülü" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"></iframe>
+        </div>
+    </div>
+
+    <div class="footer-bar">
+        <div class="dropdown">
+            <span class="menu-icon">☰</span>
+            <div class="dropdown-content">
+                <div class="menu-category">📌 ANA SAYFA</div>
+                <a href="#" id="menu-home">📊 Excel Tablosu (Ana Sayfa)</a>
+                <div class="menu-category">🔥 TAŞINIM & İLETİM</div>
+                <a href="#" data-module="tasınımgenel.html">⚡ Newton Soğuma (Taşınım Genel)</a>
+                <a href="#" data-module="iletim.html">🧱 İletim Analizi (Fourier)</a>
+                <a href="#" data-module="dogal.html">🌊 Doğal Taşınım (Grashof/Rayleigh)</a>
+                <a href="#" data-module="zorlanmıs.html">💨 Zorlanmış Taşınım (Reynolds)</a>
+                <div class="menu-category">⏳ ZAMAN & DİRENÇ</div>
+                <a href="#" data-module="zamanlı.html">⏱️ Zamana Bağlı Analiz (Lumped)</a>
+                <a href="#" data-module="direncler.html">🔗 Isıl Direnç Şebekesi (Seri/Paralel)</a>
+                <div class="menu-category">🔄 EŞANJÖR TASARIMI</div>
+                <a href="#" data-module="1.html">📐 Eşanjör Termal Tasarım (LMTD & UA)</a>
+                <a href="#" data-module="2.html">📏 Boru Geometrisi & Sayısı (v28.1)</a>
+                <div class="menu-category">ℹ️ BİLGİ</div>
+                <a href="#" id="menu-info">📄 Modül Hakkında</a>
+            </div>
+        </div>
+        <div class="sheet-tab" id="home-sheet-tab">Sayfa1</div>
+        <div class="add-tab">+</div>
+    </div>
+
+<script>
+    // ----- Excel Tablosu Oluşturma (Orijinal Kod) -----
+    const ROWS = 100;
+    const COLS = 26; // A'dan Z'ye
+
+    function initExcelTable() {
+        const colHeaders = document.getElementById('col-headers');
+        const tableBody = document.getElementById('table-body');
+        
+        colHeaders.innerHTML = '<th style="width:40px;"></th>';
+        for (let i = 0; i < COLS; i++) {
+            const th = document.createElement('th');
+            th.innerText = String.fromCharCode(65 + i);
+            colHeaders.appendChild(th);
+        }
+
+        tableBody.innerHTML = '';
+        for (let r = 1; r <= ROWS; r++) {
+            const tr = document.createElement('tr');
+            const rowNumTd = document.createElement('td');
+            rowNumTd.className = 'row-num';
+            rowNumTd.innerText = r;
+            tr.appendChild(rowNumTd);
+
+            for (let c = 0; c < COLS; c++) {
+                const td = document.createElement('td');
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'cell-input';
+                const cellAddr = String.fromCharCode(65 + c) + r;
+                input.onfocus = () => {
+                    document.getElementById('active-cell-addr').innerText = cellAddr;
+                    document.getElementById('formula-bar').value = input.value;
+                };
+                input.oninput = () => {
+                    document.getElementById('formula-bar').value = input.value;
+                };
+                td.appendChild(input);
+                tr.appendChild(td);
+            }
+            tableBody.appendChild(tr);
+        }
+    }
+
+    // ----- Modül Yükleme ve Ana Sayfa/IFrame Geçişleri -----
+    const excelContainer = document.getElementById('excel-container');
+    const iframeContainer = document.getElementById('iframe-container');
+    const dynamicFrame = document.getElementById('dynamic-frame');
+    const homeSheetTab = document.getElementById('home-sheet-tab');
+
+    function showExcelHome() {
+        excelContainer.style.display = 'block';
+        iframeContainer.style.display = 'none';
+        document.getElementById('active-cell-addr').innerText = 'A1';
+        document.getElementById('formula-bar').value = '';
+        document.title = "Isıl Analiz Merkezi - Excel Tablosu";
+    }
+
+    function loadModule(modulePath) {
+        dynamicFrame.src = modulePath;
+        excelContainer.style.display = 'none';
+        iframeContainer.style.display = 'block';
+        let modName = modulePath.split('/').pop().replace('.html', '');
+        document.title = `Isıl Analiz - ${modName}`;
+        dynamicFrame.onerror = () => {
+            console.error("Modül yüklenemedi:", modulePath);
+            iframeContainer.innerHTML = '<div style="padding:20px; color:red;">Dosya bulunamadı: ' + modulePath + '</div>';
+        };
+    }
+
+    function closeMenu() {
+        const dropdown = document.querySelector('.dropdown');
+        if (dropdown) dropdown.classList.remove('open');
+    }
+
+    function toggleMenu() {
+        const dropdown = document.querySelector('.dropdown');
+        if (dropdown) dropdown.classList.toggle('open');
+    }
+
+    function bindMenuEvents() {
+        const menuIcon = document.querySelector('.menu-icon');
+        if (menuIcon) {
+            menuIcon.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleMenu();
+            });
+        }
+
+        const moduleLinks = document.querySelectorAll('.dropdown-content a[data-module]');
+        moduleLinks.forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const moduleFile = link.getAttribute('data-module');
+                if (moduleFile) {
+                    loadModule(moduleFile);
+                    closeMenu();
+                }
+            });
+        });
+
+        const homeBtn = document.getElementById('menu-home');
+        if (homeBtn) {
+            homeBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                showExcelHome();
+                closeMenu();
+            });
+        }
+        
+        if (homeSheetTab) {
+            homeSheetTab.addEventListener('click', (e) => {
+                showExcelHome();
+                closeMenu();
+            });
+        }
+
+        const infoBtn = document.getElementById('menu-info');
+        if (infoBtn) {
+            infoBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                alert("📌 Isıl Analiz Merkezi\n\nBu platform, ısı transferi ve termodinamik hesaplamalarınız için geliştirilmiş 8 farklı modülü tek bir arayüzde birleştirir.\n\n▪️ Newton Soğuma / Taşınım Genel\n▪️ İletim Analizi (Fourier Yasası)\n▪️ Doğal Taşınım (Gr, Ra, Nu)\n▪️ Zorlanmış Taşınım (Re, Nu)\n▪️ Zamana Bağlı Analiz (Lumped Capacitance)\n▪️ Isıl Direnç Şebekesi\n▪️ Eşanjör Termal Tasarım (LMTD, UA)\n▪️ Boru Geometrisi & Sayısı Hesabı\n\nTüm modüller orijinal halleriyle çalışır, içerikleri değiştirilmemiştir. Menüden birini seçerek analiz yapabilirsiniz.");
+                closeMenu();
+                showExcelHome();
+            });
+        }
+
+        document.addEventListener('click', function(event) {
+            const dropdown = document.querySelector('.dropdown');
+            const icon = document.querySelector('.menu-icon');
+            if (dropdown && dropdown.classList.contains('open') && !dropdown.contains(event.target)) {
+                closeMenu();
+            }
+        });
+    }
+
+    // ---- Uygulamanın tam başlatılması (şifre doğru olunca çalışacak) ----
+    function initializeApp() {
+        initExcelTable();
+        bindMenuEvents();
+        excelContainer.style.display = 'block';
+        iframeContainer.style.display = 'none';
+        
+        // URL hash ile modül yönlendirmesi varsa
+        if (window.location.hash && window.location.hash.length > 1) {
+            let hashMod = window.location.hash.substring(1);
+            if (hashMod.endsWith('.html')) {
+                loadModule(hashMod);
+            }
+        }
+        
+        const firstInput = document.querySelector('#table-body tr td .cell-input');
+        if (firstInput) firstInput.focus();
+    }
+
+    // ----- ŞİFRE KONTROLÜ (sessionStorage ile) -----
+    (function checkPassword() {
+        // Yeni şifre: 10205579020
+        const DOGRU_SIFRE = "10205579020";
+        
+        // Daha önce bu oturumda (sekme açıkken) şifre doğru girilmiş mi?
+        if (sessionStorage.getItem('sifre_dogru') === 'evet') {
+            // Evet, direkt sayfayı göster ve uygulamayı başlat
+            document.body.classList.add('visible');
+            initializeApp();
+            return;
+        }
+        
+        // Yoksa şifre sor
+        let girilenSifre = prompt("Bu site korumalıdır. Lütfen şifreyi girin:");
+        
+        if (girilenSifre === DOGRU_SIFRE) {
+            // Şifre doğru: sessionStorage'a kaydet, sayfayı görünür yap ve uygulamayı başlat
+            sessionStorage.setItem('sifre_dogru', 'evet');
+            document.body.classList.add('visible');
+            initializeApp();
+        } else {
+            // Şifre yanlış: sayfa tamamen boş kalır
+            document.body.style.backgroundColor = "#ffffff";
+            document.body.innerHTML = ""; // Tüm içeriği temizle
+            // Not: innerHTML temizlendiği için hiçbir şey kalmaz.
+        }
+    })();
+</script>
+</body>
+</html>
